@@ -64,7 +64,7 @@ func TestValidationBoundaries(t *testing.T) {
 		raw  string
 	}{
 		{name: "short interval", raw: "scan-interval-seconds: 59\n"},
-		{name: "threshold low", raw: "reset_thresh: 79\n"},
+		{name: "threshold high", raw: "reset_thresh: 101\n"},
 		{name: "userinfo", raw: "management-url: http://user@example.com\n"},
 		{name: "fragment", raw: "management-url: http://localhost:8317/#secret\n"},
 		{name: "scheme", raw: "management-url: file:///tmp/api\n"},
@@ -75,6 +75,30 @@ func TestValidationBoundaries(t *testing.T) {
 				t.Fatalf("Parse(%q) succeeded", test.raw)
 			}
 		})
+	}
+}
+
+func TestResetThresholdBelowMinimumFallsBackToDefault(t *testing.T) {
+	for _, value := range []string{"79", "0", "-1"} {
+		t.Run(value, func(t *testing.T) {
+			cfg, errParse := Parse([]byte("reset_thresh: "+value+"\n"), func(string) string { return "" })
+			if errParse != nil {
+				t.Fatalf("Parse() error = %v", errParse)
+			}
+			if cfg.ResetThreshold != DefaultResetThreshold {
+				t.Fatalf("reset threshold = %d, want %d", cfg.ResetThreshold, DefaultResetThreshold)
+			}
+		})
+	}
+}
+
+func TestMinimumResetThresholdRemainsValid(t *testing.T) {
+	cfg, errParse := Parse([]byte("reset_thresh: 80\n"), func(string) string { return "" })
+	if errParse != nil {
+		t.Fatalf("Parse() error = %v", errParse)
+	}
+	if cfg.ResetThreshold != MinimumResetThreshold {
+		t.Fatalf("reset threshold = %d, want %d", cfg.ResetThreshold, MinimumResetThreshold)
 	}
 }
 
