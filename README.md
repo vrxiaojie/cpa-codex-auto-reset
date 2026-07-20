@@ -2,7 +2,7 @@
 
 `cpa-codex-auto-reset` 是一个使用 Go 编写的 CLIProxyAPI 原生插件。它发现文件型 Codex 账号和官方重置机会，仅为用户明确选择参与的账号，在机会清单完整、额度达到阈值且所有幂等与冷却条件满足时消费一次机会。
 
-当前版本：`v0.1.1`。
+当前版本：`v0.1.2`。
 
 ## 安全边界
 
@@ -79,7 +79,7 @@ export CPA_MANAGEMENT_KEY='your-management-key'
 GET /v0/resource/plugins/cpa-codex-auto-reset/status
 ```
 
-页面默认中文，支持账号搜索、参与筛选、分页、批量参与/退出、立即扫描和重置日志。页面从同源 CPA 管理中心的已保存登录状态读取 Management Key，不显示密钥输入框，也不会从插件配置或接口回显密钥。请在 CPA 管理中心连接时选择记住密钥，以便嵌入的插件页面复用认证状态。
+页面默认中文，支持账号搜索、参与筛选、分页、批量参与/退出、立即扫描和重置日志。每轮扫描会对 CPA 发现的所有 Codex 账号刷新只读 usage；页面显示“已用量”，与 CPA 页面的“剩余量”口径相反。页面从同源 CPA 管理中心的已保存登录状态读取 Management Key，不显示密钥输入框，也不会从插件配置或接口回显密钥。请在 CPA 管理中心连接时选择记住密钥，以便嵌入的插件页面复用认证状态。
 
 受 CLIProxyAPI Management 鉴权保护的接口：
 
@@ -118,14 +118,14 @@ make build
 
 ## Release 资产
 
-Git tag 使用 `vX.Y.Z`。v0.1.1 发布五个 ZIP：
+Git tag 使用 `vX.Y.Z`。v0.1.2 发布五个 ZIP：
 
 ```text
-cpa-codex-auto-reset_0.1.1_linux_amd64.zip
-cpa-codex-auto-reset_0.1.1_linux_arm64.zip
-cpa-codex-auto-reset_0.1.1_darwin_amd64.zip
-cpa-codex-auto-reset_0.1.1_darwin_arm64.zip
-cpa-codex-auto-reset_0.1.1_windows_amd64.zip
+cpa-codex-auto-reset_0.1.2_linux_amd64.zip
+cpa-codex-auto-reset_0.1.2_linux_arm64.zip
+cpa-codex-auto-reset_0.1.2_darwin_amd64.zip
+cpa-codex-auto-reset_0.1.2_darwin_arm64.zip
+cpa-codex-auto-reset_0.1.2_windows_amd64.zip
 ```
 
 每个 ZIP 根目录只有一个 `.so`、`.dylib` 或 `.dll`，Release 同时包含覆盖全部 ZIP 的 `checksums.txt`。

@@ -65,10 +65,21 @@ func (f *fakeClearer) ResetQuota(context.Context, string) error {
 }
 
 func TestNonParticipatingAccountNeverConsumes(t *testing.T) {
-	engine, _, client, _ := testEngine(t, false)
+	engine, store, client, _ := testEngine(t, false)
+	client.usage = func(int) (codex.Usage, error) {
+		return blockedUsage(engine.now(), 37), nil
+	}
 	client.credits = func(int) (codex.CreditList, error) { t.Fatal("Credits() called"); return codex.CreditList{}, nil }
 	if _, errScan := engine.Scan(context.Background(), "manual"); errScan != nil {
 		t.Fatalf("Scan() error = %v", errScan)
+	}
+	loaded, errLoad := store.Load()
+	if errLoad != nil {
+		t.Fatalf("Load() error = %v", errLoad)
+	}
+	item := loaded.Accounts[testAccount().Ref]
+	if client.usageCalls != 1 || item.UsedPercent != 37 || item.Blocked {
+		t.Fatalf("usage calls=%d account state=%#v", client.usageCalls, item)
 	}
 	if len(client.consumeKeys) != 0 {
 		t.Fatalf("consume keys = %#v", client.consumeKeys)

@@ -9,7 +9,13 @@ const storagePrefix = 'enc::v1::';
 const storageSalt = 'cli-proxy-api-webui::secure-storage';
 
 const $ = (id) => document.getElementById(id);
-const formatTime = (value) => value ? new Intl.DateTimeFormat('zh-CN', {dateStyle:'short',timeStyle:'medium'}).format(new Date(value)) : '—';
+const formatTime = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) || parsed.getUTCFullYear() <= 1
+    ? '—'
+    : new Intl.DateTimeFormat('zh-CN', {dateStyle:'short',timeStyle:'medium'}).format(parsed);
+};
 
 function decodeStorageValue(value) {
   if (!value || !value.startsWith(storagePrefix)) return value;

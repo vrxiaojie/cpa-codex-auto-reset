@@ -79,19 +79,19 @@ type AccountResponse struct {
 }
 
 type AccountView struct {
-	ID                string    `json:"id"`
-	Label             string    `json:"label"`
-	Email             string    `json:"email,omitempty"`
-	FileName          string    `json:"file_name,omitempty"`
-	Participating     bool      `json:"participating"`
-	AvailableCredits  int       `json:"available_credits"`
-	EarliestExpiresAt time.Time `json:"earliest_expires_at,omitempty"`
-	UsedPercent       float64   `json:"used_percent"`
-	Blocked           bool      `json:"blocked"`
-	LastResult        string    `json:"last_result,omitempty"`
-	NextAllowedAt     time.Time `json:"next_allowed_at,omitempty"`
-	LastScannedAt     time.Time `json:"last_scanned_at,omitempty"`
-	ErrorCode         string    `json:"error_code,omitempty"`
+	ID                string     `json:"id"`
+	Label             string     `json:"label"`
+	Email             string     `json:"email,omitempty"`
+	FileName          string     `json:"file_name,omitempty"`
+	Participating     bool       `json:"participating"`
+	AvailableCredits  int        `json:"available_credits"`
+	EarliestExpiresAt *time.Time `json:"earliest_expires_at,omitempty"`
+	UsedPercent       float64    `json:"used_percent"`
+	Blocked           bool       `json:"blocked"`
+	LastResult        string     `json:"last_result,omitempty"`
+	NextAllowedAt     *time.Time `json:"next_allowed_at,omitempty"`
+	LastScannedAt     *time.Time `json:"last_scanned_at,omitempty"`
+	ErrorCode         string     `json:"error_code,omitempty"`
 }
 
 func New(runtime Runtime) *Handler { return &Handler{runtime: runtime} }
@@ -157,7 +157,7 @@ func (h *Handler) status() pluginapi.ManagementResponse {
 		return jsonError(http.StatusServiceUnavailable, "state_unavailable")
 	}
 	cfg := h.runtime.Config()
-	response := StatusResponse{PluginID: "cpa-codex-auto-reset", Version: "0.1.1", Config: cfg.Safe(), LastScan: current.LastScan}
+	response := StatusResponse{PluginID: "cpa-codex-auto-reset", Version: "0.1.2", Config: cfg.Safe(), LastScan: current.LastScan}
 	if !current.LastScan.FinishedAt.IsZero() {
 		response.NextScan = current.LastScan.FinishedAt.Add(time.Duration(cfg.ScanIntervalSeconds) * time.Second)
 	}
@@ -201,12 +201,12 @@ func (h *Handler) accounts() pluginapi.ManagementResponse {
 			FileName:          item.Display.FileName,
 			Participating:     item.Participating,
 			AvailableCredits:  item.AvailableCredits,
-			EarliestExpiresAt: item.EarliestExpiresAt,
+			EarliestExpiresAt: optionalTime(item.EarliestExpiresAt),
 			UsedPercent:       item.UsedPercent,
 			Blocked:           item.Blocked,
 			LastResult:        item.LastResult,
-			NextAllowedAt:     nextAllowedAt(item),
-			LastScannedAt:     item.LastScannedAt,
+			NextAllowedAt:     optionalTime(nextAllowedAt(item)),
+			LastScannedAt:     optionalTime(item.LastScannedAt),
 			ErrorCode:         item.LastErrorCode,
 		})
 	}
@@ -376,6 +376,14 @@ func nextAllowedAt(item *state.AccountState) time.Time {
 		}
 	}
 	return next
+}
+
+func optionalTime(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	copy := value
+	return &copy
 }
 
 func cooldownUntil(value *state.Cooldown) time.Time {

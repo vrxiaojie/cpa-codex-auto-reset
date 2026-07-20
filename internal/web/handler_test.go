@@ -57,6 +57,29 @@ func TestStatusNeverReturnsManagementKey(t *testing.T) {
 	}
 }
 
+func TestAccountsOmitZeroNextAllowedAt(t *testing.T) {
+	runtime := seededRuntime(t)
+	response := New(runtime).route(managementRequest(http.MethodGet, "/v0/management"+apiPrefix+"/accounts", nil, nil))
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s", response.StatusCode, response.Body)
+	}
+	if strings.Contains(string(response.Body), `"next_allowed_at"`) {
+		t.Fatalf("zero next allowed time leaked into response: %s", response.Body)
+	}
+
+	next := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	if errUpdate := runtime.store.Update(func(current *state.State) error {
+		current.Accounts["account-ref"].FailureBackoff = &state.Backoff{Until: next, Reason: "test"}
+		return nil
+	}); errUpdate != nil {
+		t.Fatalf("update state: %v", errUpdate)
+	}
+	response = New(runtime).route(managementRequest(http.MethodGet, "/v0/management"+apiPrefix+"/accounts", nil, nil))
+	if !strings.Contains(string(response.Body), `"next_allowed_at":"2026-07-21T12:00:00Z"`) {
+		t.Fatalf("next allowed time missing from response: %s", response.Body)
+	}
+}
+
 func TestParticipationUpdateIsAtomicAndRejectsUnknownIDs(t *testing.T) {
 	runtime := seededRuntime(t)
 	body := []byte(`{"auth_ids":["account-ref","missing"],"participating":true}`)

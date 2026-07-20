@@ -206,6 +206,11 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 	if accountState == nil {
 		return false, false, errors.New("account state is missing")
 	}
+	credentials := codex.Credentials{AccessToken: item.AccessToken, AccountID: item.AccountID}
+	usage, errUsage := e.codex.Usage(ctx, credentials)
+	if errUsage == nil {
+		e.updateUsageSnapshot(item.Ref, usage, now)
+	}
 	if !accountState.Participating {
 		_ = e.log(state.LogEntry{Time: now, Event: "account_skipped_not_participating", Trigger: trigger, AccountRef: item.Ref, Participating: false, Decision: "skip"})
 		return false, false, nil
@@ -228,7 +233,6 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 	if accountState.FailureBackoff != nil && accountState.FailureBackoff.Until.After(now) {
 		return accountState.PendingAttempt != nil, false, nil
 	}
-	credentials := codex.Credentials{AccessToken: item.AccessToken, AccountID: item.AccountID}
 	if accountState.PendingAttempt != nil {
 		return true, e.resolvePending(ctx, trigger, item, credentials, accountState.PendingAttempt), nil
 	}
@@ -252,12 +256,10 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 	if creditDecision == "outside_candidate_window" {
 		return false, false, nil
 	}
-	usage, errUsage := e.codex.Usage(ctx, credentials)
 	if errUsage != nil {
 		e.recordTransientFailure(item.Ref, trigger, "usage_failed", "", errUsage)
 		return false, false, errUsage
 	}
-	e.updateUsageSnapshot(item.Ref, usage, now)
 	protection := credit.ExpiresAt.Sub(now) <= ProtectionWindow
 	if !usage.Blocked && usage.UsedPercent < float64(e.config.ResetThreshold) && !(protection && usage.UsedPercent > 0) {
 		_ = e.log(state.LogEntry{Time: now, Event: "reset_deferred", Trigger: trigger, AccountRef: item.Ref, Participating: true, CreditRef: credit.Ref, Decision: "below_threshold"})
