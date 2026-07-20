@@ -11,7 +11,7 @@ import (
 	pluginruntime "github.com/vrxiaojie/cpa-codex-auto-reset/internal/plugin"
 )
 
-func TestRegistryAndReleaseContractUseVersion010(t *testing.T) {
+func TestRegistryAndReleaseContractUseVersion011(t *testing.T) {
 	rawRegistry, errRead := os.ReadFile("../registry.json")
 	if errRead != nil {
 		t.Fatalf("read registry: %v", errRead)
@@ -26,7 +26,7 @@ func TestRegistryAndReleaseContractUseVersion010(t *testing.T) {
 	if errDecode := json.Unmarshal(rawRegistry, &registry); errDecode != nil {
 		t.Fatalf("decode registry: %v", errDecode)
 	}
-	if registry.SchemaVersion != 1 || len(registry.Plugins) != 1 || registry.Plugins[0].ID != "cpa-codex-auto-reset" || registry.Plugins[0].Version != "0.1.0" {
+	if registry.SchemaVersion != 1 || len(registry.Plugins) != 1 || registry.Plugins[0].ID != "cpa-codex-auto-reset" || registry.Plugins[0].Version != "0.1.1" {
 		t.Fatalf("registry = %#v", registry)
 	}
 	if registry.Plugins[0].Version != pluginruntime.Version {

@@ -6,7 +6,7 @@
       "name": "Codex Auto Reset",
       "description": "Safely reset eligible Codex quota for explicitly participating accounts.",
       "author": "vrxiaojie",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "repository": "https://github.com/vrxiaojie/cpa-codex-auto-reset",
       "homepage": "https://github.com/vrxiaojie/cpa-codex-auto-reset",
       "license": "MIT",

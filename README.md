@@ -2,7 +2,7 @@
 
 `cpa-codex-auto-reset` 是一个使用 Go 编写的 CLIProxyAPI 原生插件。它发现文件型 Codex 账号和官方重置机会，仅为用户明确选择参与的账号，在机会清单完整、额度达到阈值且所有幂等与冷却条件满足时消费一次机会。
 
-当前版本：`v0.1.0`。
+当前版本：`v0.1.1`。
 
 ## 安全边界
 
@@ -118,14 +118,14 @@ make build
 
 ## Release 资产
 
-Git tag 使用 `vX.Y.Z`。v0.1.0 发布五个 ZIP：
+Git tag 使用 `vX.Y.Z`。v0.1.1 发布五个 ZIP：
 
 ```text
-cpa-codex-auto-reset_0.1.0_linux_amd64.zip
-cpa-codex-auto-reset_0.1.0_linux_arm64.zip
-cpa-codex-auto-reset_0.1.0_darwin_amd64.zip
-cpa-codex-auto-reset_0.1.0_darwin_arm64.zip
-cpa-codex-auto-reset_0.1.0_windows_amd64.zip
+cpa-codex-auto-reset_0.1.1_linux_amd64.zip
+cpa-codex-auto-reset_0.1.1_linux_arm64.zip
+cpa-codex-auto-reset_0.1.1_darwin_amd64.zip
+cpa-codex-auto-reset_0.1.1_darwin_arm64.zip
+cpa-codex-auto-reset_0.1.1_windows_amd64.zip
 ```
 
 每个 ZIP 根目录只有一个 `.so`、`.dylib` 或 `.dll`，Release 同时包含覆盖全部 ZIP 的 `checksums.txt`。
