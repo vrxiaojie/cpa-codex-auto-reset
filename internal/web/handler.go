@@ -145,7 +145,7 @@ func (h *Handler) route(request pluginapi.ManagementRequest) pluginapi.Managemen
 		if !h.sameOrigin(request.Headers) {
 			return jsonError(http.StatusForbidden, "cross_origin_rejected")
 		}
-		return h.scan()
+		return h.scan(request.Body)
 	default:
 		return jsonError(http.StatusNotFound, "route_not_found")
 	}
@@ -238,7 +238,7 @@ func (h *Handler) participation(raw []byte) pluginapi.ManagementResponse {
 	}
 	decoder := json.NewDecoder(io.LimitReader(bytes.NewReader(raw), maxRequestBody))
 	decoder.DisallowUnknownFields()
-	if errDecode := decoder.Decode(&request); errDecode != nil || request.Participating == nil || len(request.AuthIDs) == 0 || len(request.AuthIDs) > 1000 {
+	if errDecode := decoder.Decode(&request); errDecode != nil || !decoderAtEOF(decoder) || request.Participating == nil || len(request.AuthIDs) == 0 || len(request.AuthIDs) > 1000 {
 		return jsonError(http.StatusBadRequest, "invalid_request_body")
 	}
 	result, errSet := state.SetParticipation(h.runtime.Store(), request.AuthIDs, *request.Participating, time.Now().UTC())
@@ -255,12 +255,28 @@ func (h *Handler) participation(raw []byte) pluginapi.ManagementResponse {
 	})
 }
 
-func (h *Handler) scan() pluginapi.ManagementResponse {
+func (h *Handler) scan(raw []byte) pluginapi.ManagementResponse {
+	if len(raw) > maxRequestBody {
+		return jsonError(http.StatusBadRequest, "invalid_request_body")
+	}
+	if len(bytes.TrimSpace(raw)) > 0 {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		var request struct{}
+		if errDecode := decoder.Decode(&request); errDecode != nil || !decoderAtEOF(decoder) {
+			return jsonError(http.StatusBadRequest, "invalid_request_body")
+		}
+	}
 	summary, errScan := h.runtime.Scan(context.Background(), "manual")
 	if errScan != nil {
 		return jsonResponse(http.StatusConflict, map[string]any{"ok": false, "error": "scan_not_started", "summary": summary})
 	}
 	return jsonResponse(http.StatusAccepted, map[string]any{"ok": true, "summary": summary})
+}
+
+func decoderAtEOF(decoder *json.Decoder) bool {
+	var extra any
+	return errors.Is(decoder.Decode(&extra), io.EOF)
 }
 
 func (h *Handler) resource(path string) pluginapi.ManagementResponse {

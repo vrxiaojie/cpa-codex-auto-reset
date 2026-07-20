@@ -90,6 +90,19 @@ func TestCrossOriginWriteIsRejected(t *testing.T) {
 	}
 }
 
+func TestWriteRoutesRejectTrailingOrUnknownJSON(t *testing.T) {
+	runtime := seededRuntime(t)
+	headers := http.Header{"Origin": []string{"http://127.0.0.1:8317"}, "Sec-Fetch-Site": []string{"same-origin"}}
+	participation := New(runtime).route(managementRequest(http.MethodPut, "/v0/management"+apiPrefix+"/accounts/participation", headers, []byte(`{"auth_ids":["account-ref"],"participating":true} {}`)))
+	if participation.StatusCode != http.StatusBadRequest {
+		t.Fatalf("participation response = %#v", participation)
+	}
+	scan := New(runtime).route(managementRequest(http.MethodPost, "/v0/management"+apiPrefix+"/scan", headers, []byte(`{"bypass":true}`)))
+	if scan.StatusCode != http.StatusBadRequest || runtime.scans != 0 {
+		t.Fatalf("scan response=%#v scans=%d", scan, runtime.scans)
+	}
+}
+
 func TestAssetsUseSafeDynamicRenderingAndNoExternalRuntime(t *testing.T) {
 	javascript, errRead := assets.ReadFile("assets/app.js")
 	if errRead != nil {
