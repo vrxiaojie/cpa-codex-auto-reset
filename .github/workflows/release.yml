@@ -54,26 +54,31 @@ jobs:
             goarch: amd64
             ext: so
             cc: gcc
+            shell: bash
           - runner: ubuntu-latest
             goos: linux
             goarch: arm64
             ext: so
             cc: aarch64-linux-gnu-gcc
+            shell: bash
           - runner: macos-14
             goos: darwin
             goarch: amd64
             ext: dylib
             cc: clang
+            shell: bash
           - runner: macos-14
             goos: darwin
             goarch: arm64
             ext: dylib
             cc: clang
+            shell: bash
           - runner: windows-latest
             goos: windows
             goarch: amd64
             ext: dll
-            cc: C:/msys64/mingw64/bin/gcc.exe
+            cc: gcc
+            shell: msys2 {0}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -87,10 +92,11 @@ jobs:
           msystem: MINGW64
           update: true
           install: mingw-w64-x86_64-gcc
+          path-type: inherit
       - if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Build and package
-        shell: bash
+        shell: ${{ matrix.shell }}
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           TARGET_GOOS: ${{ matrix.goos }}

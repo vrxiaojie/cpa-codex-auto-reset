@@ -61,4 +61,10 @@ func TestRegistryAndReleaseContractUseVersion010(t *testing.T) {
 	if buildPackage < 0 || setupMSYS2 > buildPackage {
 		t.Fatal("workflow must install the Windows C compiler before building")
 	}
+	if !strings.Contains(workflowText, "shell: msys2 {0}") || !strings.Contains(workflowText, "shell: ${{ matrix.shell }}") {
+		t.Fatal("workflow must build Windows targets inside the configured MSYS2 shell")
+	}
+	if strings.Contains(workflowText, "C:/msys64/mingw64/bin/gcc.exe") {
+		t.Fatal("workflow must not assume a fixed MSYS2 installation directory")
+	}
 }
