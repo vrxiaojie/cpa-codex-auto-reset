@@ -8,6 +8,8 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+
+	pluginconfig "github.com/vrxiaojie/cpa-codex-auto-reset/internal/config"
 )
 
 const (
@@ -24,6 +26,8 @@ type Runtime struct {
 	mu         sync.RWMutex
 	hostCaller HostCaller
 	closed     bool
+	configured bool
+	config     pluginconfig.Config
 }
 
 type Envelope struct {
@@ -77,7 +81,17 @@ func (r *Runtime) Handle(method string, request []byte) ([]byte, error) {
 		if req.SchemaVersion != 0 && req.SchemaVersion != pluginabi.SchemaVersion {
 			return ErrorEnvelope("unsupported_schema", "unsupported plugin schema version"), nil
 		}
+		cfg, errParse := pluginconfig.Parse(req.ConfigYAML, nil)
+		if errParse != nil {
+			return ErrorEnvelope("invalid_config", SanitizeError(errParse)), nil
+		}
 		r.mu.Lock()
+		if method == pluginabi.MethodPluginReconfigure && r.configured && r.config.StateDir != cfg.StateDir {
+			r.mu.Unlock()
+			return ErrorEnvelope("state_dir_change_requires_restart", "state-dir cannot be changed during hot reconfiguration"), nil
+		}
+		r.config = cfg
+		r.configured = true
 		r.closed = false
 		r.mu.Unlock()
 		return OKEnvelope(Registration()), nil
@@ -96,6 +110,12 @@ func (r *Runtime) Shutdown() {
 	r.mu.Unlock()
 }
 
+func (r *Runtime) Config() pluginconfig.Config {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.config
+}
+
 func Registration() registration {
 	return registration{
 		SchemaVersion: pluginabi.SchemaVersion,
@@ -104,12 +124,26 @@ func Registration() registration {
 			Version:          Version,
 			Author:           Author,
 			GitHubRepository: Repository,
-			ConfigFields:     []pluginapi.ConfigField{},
+			ConfigFields:     configFields(),
 		},
 		Capabilities: registrationCapabilities{
 			UsagePlugin:   true,
 			ManagementAPI: true,
 		},
+	}
+}
+
+func configFields() []pluginapi.ConfigField {
+	return []pluginapi.ConfigField{
+		{Name: "management-url", Type: pluginapi.ConfigFieldTypeString, Description: "CLIProxyAPI Management API root URL. Defaults to http://127.0.0.1:8317."},
+		{Name: "management-key", Type: pluginapi.ConfigFieldTypeString, Description: "CLIProxyAPI Management Key. Stored in memory only; prefer management-key-env."},
+		{Name: "management-key-env", Type: pluginapi.ConfigFieldTypeString, Description: "Environment variable containing the Management Key. Defaults to CPA_MANAGEMENT_KEY."},
+		{Name: "scan-interval-seconds", Type: pluginapi.ConfigFieldTypeInteger, Description: "Background scan interval in seconds. Minimum 60."},
+		{Name: "post-reset-cooldown-seconds", Type: pluginapi.ConfigFieldTypeInteger, Description: "Cooldown after a successful or already-redeemed reset."},
+		{Name: "failure-backoff-seconds", Type: pluginapi.ConfigFieldTypeInteger, Description: "Initial persistent backoff after a confirmed failure."},
+		{Name: "state-dir", Type: pluginapi.ConfigFieldTypeString, Description: "Private persistent state directory."},
+		{Name: "default-participation", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Whether newly discovered accounts participate. Safe default is false."},
+		{Name: "reset_thresh", Type: pluginapi.ConfigFieldTypeInteger, Description: "Usage threshold percentage for reset eligibility. Range 80-100; default 95."},
 	}
 }
 
