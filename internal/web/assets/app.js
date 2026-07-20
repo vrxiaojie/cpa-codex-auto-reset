@@ -144,6 +144,7 @@ async function load() {
     const [accounts, logs] = await Promise.all([request('/accounts'), request('/logs')]);
     state.accounts = accounts.accounts || []; state.logs = logs.logs || [];
     $('runStatus').textContent = status.config.enabled && status.config.complete ? '运行中' : '配置不完整';
+    $('resetThreshold').textContent = `${Number(status.config.reset_threshold)}%`;
     $('lastScan').textContent = formatTime(status.last_scan && status.last_scan.finished_at);
     $('nextScan').textContent = formatTime(status.next_scan);
     $('participatingCount').textContent = `${status.counts.participating} / ${status.counts.total}`;

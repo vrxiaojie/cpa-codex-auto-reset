@@ -55,6 +55,9 @@ func TestStatusNeverReturnsManagementKey(t *testing.T) {
 	if !payload.Config.ManagementKeyConfigured {
 		t.Fatalf("safe config = %#v", payload.Config)
 	}
+	if payload.Config.ResetThreshold != pluginconfig.DefaultResetThreshold {
+		t.Fatalf("reset threshold = %d", payload.Config.ResetThreshold)
+	}
 }
 
 func TestAccountsOmitZeroNextAllowedAt(t *testing.T) {
@@ -146,6 +149,9 @@ func TestAssetsUseSafeDynamicRenderingAndNoExternalRuntime(t *testing.T) {
 	}
 	if strings.Contains(string(page.Body), "managementKeyInput") || strings.Contains(string(page.Body), "connectButton") {
 		t.Fatal("page still renders a second Management Key prompt")
+	}
+	if !strings.Contains(string(page.Body), `id="resetThreshold"`) || !strings.Contains(string(javascript), "status.config.reset_threshold") {
+		t.Fatal("frontend does not display the configured reset threshold")
 	}
 }
 
