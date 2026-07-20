@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -9,7 +10,13 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 
+	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/account"
+	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/codex"
 	pluginconfig "github.com/vrxiaojie/cpa-codex-auto-reset/internal/config"
+	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/host"
+	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/management"
+	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/reset"
+	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/state"
 )
 
 const (
@@ -28,6 +35,8 @@ type Runtime struct {
 	closed     bool
 	configured bool
 	config     pluginconfig.Config
+	engine     *reset.Engine
+	store      *state.Store
 }
 
 type Envelope struct {
@@ -90,10 +99,33 @@ func (r *Runtime) Handle(method string, request []byte) ([]byte, error) {
 			r.mu.Unlock()
 			return ErrorEnvelope("state_dir_change_requires_restart", "state-dir cannot be changed during hot reconfiguration"), nil
 		}
+		caller := r.hostCaller
+		oldEngine := r.engine
 		r.config = cfg
 		r.configured = true
 		r.closed = false
+		r.engine = nil
+		r.store = nil
 		r.mu.Unlock()
+		if oldEngine != nil {
+			oldEngine.Stop()
+		}
+		if caller != nil {
+			engine, store, errBuild := buildEngine(cfg, caller)
+			if errBuild != nil {
+				return ErrorEnvelope("runtime_start_failed", "failed to initialize plugin runtime"), nil
+			}
+			r.mu.Lock()
+			if r.closed {
+				r.mu.Unlock()
+				engine.Stop()
+				return ErrorEnvelope("plugin_shutdown", "plugin is shutting down"), nil
+			}
+			r.engine = engine
+			r.store = store
+			r.mu.Unlock()
+			engine.Start(context.Background())
+		}
 		return OKEnvelope(Registration()), nil
 	case pluginabi.MethodUsageHandle:
 		return OKEnvelope(struct{}{}), nil
@@ -107,13 +139,46 @@ func (r *Runtime) Handle(method string, request []byte) ([]byte, error) {
 func (r *Runtime) Shutdown() {
 	r.mu.Lock()
 	r.closed = true
+	engine := r.engine
+	r.engine = nil
 	r.mu.Unlock()
+	if engine != nil {
+		engine.Stop()
+	}
 }
 
 func (r *Runtime) Config() pluginconfig.Config {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.config
+}
+
+func (r *Runtime) Scan(ctx context.Context, trigger string) (state.ScanSummary, error) {
+	r.mu.RLock()
+	engine := r.engine
+	r.mu.RUnlock()
+	if engine == nil {
+		return state.ScanSummary{}, errors.New("reset engine is unavailable")
+	}
+	return engine.Scan(ctx, trigger)
+}
+
+func (r *Runtime) Store() *state.Store {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.store
+}
+
+func buildEngine(cfg pluginconfig.Config, caller HostCaller) (*reset.Engine, *state.Store, error) {
+	hostClient := host.NewClient(host.Caller(caller))
+	discovery := account.NewDiscovery(hostClient)
+	codexClient, errCodex := codex.NewClient(codex.DefaultBaseURL, nil)
+	if errCodex != nil {
+		return nil, nil, errCodex
+	}
+	store := state.NewStore(cfg.StateDir)
+	clearer := management.NewClient(cfg.ManagementURL, cfg.ManagementKey, nil)
+	return reset.New(cfg, discovery, codexClient, clearer, store), store, nil
 }
 
 func Registration() registration {

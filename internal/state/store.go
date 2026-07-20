@@ -122,7 +122,7 @@ func (s *Store) saveUnlocked(current State) error {
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("close temporary state: %w", errClose)
 	}
-	if errRename := os.Rename(tempPath, s.path); errRename != nil {
+	if errRename := replaceFile(tempPath, s.path); errRename != nil {
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("replace persistent state: %w", errRename)
 	}
@@ -155,16 +155,4 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 		return errors.New("extra JSON value")
 	}
 	return errDecode
-}
-
-func syncDirectory(dir string) error {
-	handle, errOpen := os.Open(dir)
-	if errOpen != nil {
-		return fmt.Errorf("open state directory for sync: %w", errOpen)
-	}
-	defer handle.Close()
-	if errSync := handle.Sync(); errSync != nil {
-		return fmt.Errorf("sync state directory: %w", errSync)
-	}
-	return nil
 }

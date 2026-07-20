@@ -46,6 +46,9 @@ type Attempt struct {
 	Phase             string    `json:"phase"`
 	Fingerprint       string    `json:"fingerprint"`
 	VerificationCount int       `json:"verification_count"`
+	PreAvailableCount int       `json:"pre_available_count"`
+	PreUsedPercent    float64   `json:"pre_used_percent"`
+	PreBlocked        bool      `json:"pre_blocked"`
 }
 
 type Cooldown struct {
