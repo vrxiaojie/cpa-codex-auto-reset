@@ -214,7 +214,7 @@ func configFields() []pluginapi.ConfigField {
 		{Name: "failure-backoff-seconds", Type: pluginapi.ConfigFieldTypeInteger, Description: "Initial persistent backoff after a confirmed failure."},
 		{Name: "state-dir", Type: pluginapi.ConfigFieldTypeString, Description: "Private persistent state directory."},
 		{Name: "default-participation", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Whether newly discovered accounts participate. Safe default is false."},
-		{Name: "reset_thresh", Type: pluginapi.ConfigFieldTypeInteger, Description: "Usage threshold percentage for reset eligibility. Range 80-100; default 95."},
+		{Name: "reset_thresh", Type: pluginapi.ConfigFieldTypeInteger, Description: "Usage threshold percentage for reset eligibility. Values below 80 fall back to the default 95; maximum 100."},
 	}
 }
 
