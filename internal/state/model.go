@@ -27,6 +27,12 @@ type AccountState struct {
 	PendingLocalClear  *PendingLocalClear   `json:"pending_local_clear,omitempty"`
 	LastFingerprint    string               `json:"last_fingerprint,omitempty"`
 	LastResult         string               `json:"last_result,omitempty"`
+	AvailableCredits   int                  `json:"available_credits"`
+	EarliestExpiresAt  time.Time            `json:"earliest_expires_at,omitempty"`
+	UsedPercent        float64              `json:"used_percent"`
+	Blocked            bool                 `json:"blocked"`
+	LastScannedAt      time.Time            `json:"last_scanned_at,omitempty"`
+	LastErrorCode      string               `json:"last_error_code,omitempty"`
 }
 
 type AccountDisplay struct {

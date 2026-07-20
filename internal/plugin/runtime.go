@@ -17,6 +17,7 @@ import (
 	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/management"
 	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/reset"
 	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/state"
+	"github.com/vrxiaojie/cpa-codex-auto-reset/internal/web"
 )
 
 const (
@@ -130,7 +131,13 @@ func (r *Runtime) Handle(method string, request []byte) ([]byte, error) {
 	case pluginabi.MethodUsageHandle:
 		return OKEnvelope(struct{}{}), nil
 	case pluginabi.MethodManagementRegister:
-		return OKEnvelope(pluginapi.ManagementRegistrationResponse{}), nil
+		return OKEnvelope(web.Registration()), nil
+	case pluginabi.MethodManagementHandle:
+		response, errHandle := web.New(r).Handle(request)
+		if errHandle != nil {
+			return nil, errHandle
+		}
+		return OKEnvelope(response), nil
 	default:
 		return ErrorEnvelope("unknown_method", "unknown method"), nil
 	}

@@ -206,6 +206,7 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 		e.recordTransientFailure(item.Ref, trigger, "credit_list_failed", "", errCredits)
 		return false, false, errCredits
 	}
+	e.updateCreditSnapshot(item.Ref, credits, now)
 	credit, okCredit := firstUsableCredit(credits.Available, accountState.Tombstones)
 	if !okCredit {
 		return false, false, nil
@@ -219,6 +220,7 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 		e.recordTransientFailure(item.Ref, trigger, "usage_failed", "", errUsage)
 		return false, false, errUsage
 	}
+	e.updateUsageSnapshot(item.Ref, usage, now)
 	protection := credit.ExpiresAt.Sub(now) <= ProtectionWindow
 	if !usage.Blocked && usage.UsedPercent < float64(e.config.ResetThreshold) && !(protection && usage.UsedPercent > 0) {
 		_ = e.log(state.LogEntry{Time: now, Event: "reset_deferred", Trigger: trigger, AccountRef: item.Ref, Participating: true, CreditRef: credit.Ref, Decision: "below_threshold"})
@@ -332,6 +334,7 @@ func (e *Engine) completeSuccessfulReset(ctx context.Context, trigger string, it
 		accountState.FailureBackoff = nil
 		accountState.LastFingerprint = attempt.Fingerprint
 		accountState.LastResult = outcome
+		accountState.LastErrorCode = ""
 		accountState.PendingLocalClear = &state.PendingLocalClear{AuthIndex: item.AuthIndex, CreatedAt: now, NextRetryAt: now}
 		current.AppendLog(state.LogEntry{Time: now, Event: eventForSuccess(outcome), Trigger: trigger, AccountRef: item.Ref, Participating: true, CreditRef: attempt.CreditRef, Outcome: outcome, AttemptIDRef: attempt.AttemptIDRef, NextAttemptAt: cooldownUntil})
 		return nil
@@ -464,6 +467,7 @@ func (e *Engine) applyFailure(accountRef, trigger, fingerprint, outcome string, 
 		accountState.FailureBackoff = &state.Backoff{Until: now.Add(delay), Fingerprint: fingerprint, Level: 1, Reason: outcome}
 		accountState.LastFingerprint = fingerprint
 		accountState.LastResult = outcome
+		accountState.LastErrorCode = outcome
 		if tombstone && creditID != "" {
 			if accountState.Tombstones == nil {
 				accountState.Tombstones = make(map[string]time.Time)
@@ -481,6 +485,7 @@ func (e *Engine) recordTransientFailure(accountRef, trigger, code, fingerprint s
 	_ = e.store.Update(func(current *state.State) error {
 		if accountState := current.Accounts[accountRef]; accountState != nil {
 			accountState.FailureBackoff = &state.Backoff{Until: now.Add(delay), Fingerprint: fingerprint, Level: 1, Reason: code}
+			accountState.LastErrorCode = code
 			current.AppendLog(state.LogEntry{Time: now, Event: "reset_deferred", Trigger: trigger, AccountRef: accountRef, Participating: true, Decision: "transient_backoff", NextAttemptAt: now.Add(delay), ErrorCode: code})
 		}
 		return nil
@@ -491,6 +496,33 @@ func (e *Engine) finishScan(summary state.ScanSummary) error {
 	return e.store.Update(func(current *state.State) error {
 		current.LastScan = summary
 		current.AppendLog(state.LogEntry{Time: summary.FinishedAt, Event: "scan_completed", Trigger: summary.Trigger, DurationMS: summary.FinishedAt.Sub(summary.StartedAt).Milliseconds(), ErrorCode: summary.Error})
+		return nil
+	})
+}
+
+func (e *Engine) updateCreditSnapshot(accountRef string, credits codex.CreditList, now time.Time) {
+	_ = e.store.Update(func(current *state.State) error {
+		if accountState := current.Accounts[accountRef]; accountState != nil {
+			accountState.AvailableCredits = len(credits.Available)
+			accountState.EarliestExpiresAt = time.Time{}
+			if len(credits.Available) > 0 {
+				accountState.EarliestExpiresAt = credits.Available[0].ExpiresAt
+			}
+			accountState.LastScannedAt = now
+			accountState.LastErrorCode = ""
+		}
+		return nil
+	})
+}
+
+func (e *Engine) updateUsageSnapshot(accountRef string, usage codex.Usage, now time.Time) {
+	_ = e.store.Update(func(current *state.State) error {
+		if accountState := current.Accounts[accountRef]; accountState != nil {
+			accountState.UsedPercent = usage.UsedPercent
+			accountState.Blocked = usage.Blocked
+			accountState.LastScannedAt = now
+			accountState.LastErrorCode = ""
+		}
 		return nil
 	})
 }

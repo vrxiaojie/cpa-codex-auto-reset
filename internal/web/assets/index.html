@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Codex 自动重置</title>
+  <link rel="stylesheet" href="/v0/resource/plugins/cpa-codex-auto-reset/app.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">CLIProxyAPI 原生插件</p>
+        <h1>Codex 自动重置</h1>
+        <p class="subtitle">只为明确参与的账号，在满足安全条件时使用最早到期的重置机会。</p>
+      </div>
+      <button id="scanButton" class="primary" type="button">立即扫描</button>
+    </header>
+
+    <div id="errorBanner" class="banner hidden" role="alert"></div>
+    <div id="warningBanner" class="banner warning hidden"></div>
+
+    <section class="cards" aria-label="运行摘要">
+      <article><span>运行状态</span><strong id="runStatus">读取中</strong></article>
+      <article><span>上次扫描</span><strong id="lastScan">—</strong></article>
+      <article><span>下次扫描</span><strong id="nextScan">—</strong></article>
+      <article><span>参与账号</span><strong id="participatingCount">—</strong></article>
+      <article><span>可用机会</span><strong id="creditCount">—</strong></article>
+      <article><span>冷却 / 退避</span><strong id="cooldownCount">—</strong></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header controls">
+        <div>
+          <h2>账号</h2>
+          <p id="accountSummary">正在读取账号状态</p>
+        </div>
+        <div class="control-row">
+          <input id="managementKeyInput" type="password" autocomplete="off" placeholder="Management Key（仅本页内存）" aria-label="Management Key">
+          <button id="connectButton" type="button">连接</button>
+          <input id="searchInput" type="search" placeholder="搜索标签、邮箱或文件名" aria-label="搜索账号">
+          <select id="participationFilter" aria-label="参与状态筛选">
+            <option value="all">全部状态</option>
+            <option value="participating">已参与</option>
+            <option value="not-participating">未参与</option>
+          </select>
+          <button id="batchJoin" type="button">批量参与</button>
+          <button id="batchLeave" type="button">批量退出</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th><input id="selectAll" type="checkbox" aria-label="选择当前页全部账号"></th><th>账号</th><th>参与</th><th>机会</th><th>Usage</th><th>最近结果</th><th>下次可尝试</th></tr></thead>
+          <tbody id="accountRows"></tbody>
+        </table>
+      </div>
+      <div class="pager"><button id="prevPage" type="button">上一页</button><span id="pageInfo">第 1 页</span><button id="nextPage" type="button">下一页</button></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><div><h2>重置日志</h2><p>展示扫描、决策、消费与核验结果，不包含 token、完整机会 ID 或幂等键。</p></div></div>
+      <div id="logList" class="logs"></div>
+    </section>
+  </main>
+  <script src="/v0/resource/plugins/cpa-codex-auto-reset/app.js" defer></script>
+</body>
+</html>
