@@ -194,6 +194,19 @@ func TestTransientFailureBackoffSuppressesImmediateRescanRequests(t *testing.T) 
 	}
 }
 
+func TestStopBeforeStartupDelayPreventsRegistrationTimeScan(t *testing.T) {
+	engine, _, client, _ := testEngine(t, true)
+	engine.Start(context.Background())
+	started := time.Now()
+	engine.Stop()
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("Stop() took %s", elapsed)
+	}
+	if client.creditCalls != 0 {
+		t.Fatalf("startup scan ran before registration could return: %d calls", client.creditCalls)
+	}
+}
+
 func TestConcurrentScansDoNotDuplicateConsume(t *testing.T) {
 	engine, _, client, _ := testEngine(t, true)
 	entered := make(chan struct{})

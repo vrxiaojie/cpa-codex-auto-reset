@@ -28,6 +28,7 @@ const (
 	MinimumFailureBackoff    = 30 * time.Minute
 	ManagementAuthCooldown   = 10 * time.Minute
 	MaximumVerificationTries = 2
+	StartupScanDelay         = time.Second
 )
 
 type Discovery interface {
@@ -88,6 +89,13 @@ func (e *Engine) Start(parent context.Context) {
 		defer close(e.done)
 		stopParent := context.AfterFunc(parent, e.cancel)
 		defer stopParent()
+		startupTimer := time.NewTimer(StartupScanDelay)
+		defer startupTimer.Stop()
+		select {
+		case <-e.ctx.Done():
+			return
+		case <-startupTimer.C:
+		}
 		ticker := time.NewTicker(time.Duration(e.config.ScanIntervalSeconds) * time.Second)
 		defer ticker.Stop()
 		_, _ = e.Scan(e.ctx, "startup")
