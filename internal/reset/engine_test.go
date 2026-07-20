@@ -129,6 +129,45 @@ func TestSuccessfulResetPersistsCooldownAndClearsLocalQuota(t *testing.T) {
 	}
 }
 
+func TestBlockedUsageBypassesCandidateWindow(t *testing.T) {
+	engine, store, client, clearer := testEngine(t, true)
+	usage := blockedUsage(engine.now(), 37)
+	usage.Allowed = false
+	usage.Blocked = true
+	client.credits = func(call int) (codex.CreditList, error) {
+		if call <= 2 {
+			return codex.CreditList{AvailableCount: 1, Available: []codex.Credit{{ID: "credit-id", Ref: "credit-ref", ExpiresAt: engine.now().Add(24 * time.Hour)}}}, nil
+		}
+		return codex.CreditList{AvailableCount: 0}, nil
+	}
+	client.usage = func(call int) (codex.Usage, error) {
+		if call == 1 {
+			return usage, nil
+		}
+		return blockedUsage(engine.now(), 0), nil
+	}
+	client.consume = func(int, string, string) (codex.ConsumeResult, error) {
+		return codex.ConsumeResult{Code: codex.ConsumeReset, WindowsReset: 2}, nil
+	}
+
+	summary, errScan := engine.Scan(context.Background(), "manual")
+	if errScan != nil {
+		t.Fatalf("Scan() error = %v", errScan)
+	}
+	if summary.Eligible != 1 || summary.Reset != 1 || len(client.consumeKeys) != 1 || clearer.calls != 1 {
+		t.Fatalf("summary=%#v consume=%d clear=%d", summary, len(client.consumeKeys), clearer.calls)
+	}
+	loaded, errLoad := store.Load()
+	if errLoad != nil {
+		t.Fatalf("Load() error = %v", errLoad)
+	}
+	for _, entry := range loaded.Logs {
+		if entry.Event == "credit_discovered" && entry.Decision == "outside_candidate_window" {
+			t.Fatalf("blocked usage was logged outside the candidate window: %#v", entry)
+		}
+	}
+}
+
 func TestAmbiguousConsumeReusesOriginalIdempotencyKey(t *testing.T) {
 	engine, store, client, _ := testEngine(t, true)
 	currentTime := engine.now()

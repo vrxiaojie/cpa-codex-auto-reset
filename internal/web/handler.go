@@ -157,7 +157,7 @@ func (h *Handler) status() pluginapi.ManagementResponse {
 		return jsonError(http.StatusServiceUnavailable, "state_unavailable")
 	}
 	cfg := h.runtime.Config()
-	response := StatusResponse{PluginID: "cpa-codex-auto-reset", Version: "0.1.3", Config: cfg.Safe(), LastScan: current.LastScan}
+	response := StatusResponse{PluginID: "cpa-codex-auto-reset", Version: "0.1.4", Config: cfg.Safe(), LastScan: current.LastScan}
 	if !current.LastScan.FinishedAt.IsZero() {
 		response.NextScan = current.LastScan.FinishedAt.Add(time.Duration(cfg.ScanIntervalSeconds) * time.Second)
 	}
