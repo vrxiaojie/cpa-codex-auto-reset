@@ -127,6 +127,9 @@ func Parse(raw []byte, getenv func(string) string) (Config, error) {
 }
 
 func (c *Config) Validate() error {
+	if c.ResetThreshold < MinimumResetThreshold {
+		c.ResetThreshold = DefaultResetThreshold
+	}
 	parsed, errParse := url.Parse(c.ManagementURL)
 	if errParse != nil || parsed.Host == "" {
 		return errors.New("management-url must be an absolute HTTP(S) URL")
@@ -151,8 +154,8 @@ func (c *Config) Validate() error {
 	if c.FailureBackoffSeconds < MinimumCooldownSeconds || c.FailureBackoffSeconds > MaximumIntervalSeconds {
 		return fmt.Errorf("failure-backoff-seconds must be between %d and %d", MinimumCooldownSeconds, MaximumIntervalSeconds)
 	}
-	if c.ResetThreshold < MinimumResetThreshold || c.ResetThreshold > MaximumResetThreshold {
-		return fmt.Errorf("reset-thresh must be between %d and %d", MinimumResetThreshold, MaximumResetThreshold)
+	if c.ResetThreshold > MaximumResetThreshold {
+		return fmt.Errorf("reset-thresh must not exceed %d", MaximumResetThreshold)
 	}
 	if c.StateDir == "" || c.StateDir == "." {
 		return errors.New("state-dir must not be empty")
