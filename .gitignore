@@ -1,0 +1,17 @@
+/build/
+/dist/
+/.vscode/
+.DS_Store
+AGENTS.md
+
+*.so
+*.dylib
+*.dll
+*.h
+*.tmp
+
+# 插件运行状态和本地秘密
+/data/
+*.state.json
+.env
+.env.*
