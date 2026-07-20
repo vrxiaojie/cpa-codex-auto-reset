@@ -54,31 +54,26 @@ jobs:
             goarch: amd64
             ext: so
             cc: gcc
-            shell: bash
           - runner: ubuntu-latest
             goos: linux
             goarch: arm64
             ext: so
             cc: aarch64-linux-gnu-gcc
-            shell: bash
           - runner: macos-14
             goos: darwin
             goarch: amd64
             ext: dylib
             cc: clang
-            shell: bash
           - runner: macos-14
             goos: darwin
             goarch: arm64
             ext: dylib
             cc: clang
-            shell: bash
           - runner: windows-latest
             goos: windows
             goarch: amd64
             ext: dll
             cc: gcc
-            shell: msys2 {0}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -86,7 +81,8 @@ jobs:
         with:
           go-version: "1.26.x"
           cache: true
-      - if: matrix.goos == 'windows'
+      - id: setup-msys2
+        if: matrix.goos == 'windows'
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -96,13 +92,13 @@ jobs:
       - if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Build and package
-        shell: ${{ matrix.shell }}
+        shell: bash
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           TARGET_GOOS: ${{ matrix.goos }}
           TARGET_GOARCH: ${{ matrix.goarch }}
           EXT: ${{ matrix.ext }}
-          TARGET_CC: ${{ matrix.cc }}
+          TARGET_CC: ${{ matrix.goos == 'windows' && format('{0}/mingw64/bin/gcc.exe', steps.setup-msys2.outputs.msys2-location) || matrix.cc }}
         run: |
           set -euo pipefail
           plugin="cpa-codex-auto-reset"
