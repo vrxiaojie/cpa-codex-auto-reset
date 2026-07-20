@@ -60,7 +60,7 @@ func TestStatusNeverReturnsManagementKey(t *testing.T) {
 func TestParticipationUpdateIsAtomicAndRejectsUnknownIDs(t *testing.T) {
 	runtime := seededRuntime(t)
 	body := []byte(`{"auth_ids":["account-ref","missing"],"participating":true}`)
-	headers := http.Header{"Origin": []string{"http://localhost:8317"}, "Sec-Fetch-Site": []string{"same-origin"}}
+	headers := http.Header{"Origin": []string{"https://management.example"}, "Sec-Fetch-Site": []string{"same-origin"}}
 	response := New(runtime).route(managementRequest(http.MethodPut, "/v0/management"+apiPrefix+"/accounts/participation", headers, body))
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%s", response.StatusCode, response.Body)
@@ -111,12 +111,18 @@ func TestAssetsUseSafeDynamicRenderingAndNoExternalRuntime(t *testing.T) {
 	if strings.Contains(string(javascript), "innerHTML") || strings.Contains(string(javascript), "https://") || strings.Contains(string(javascript), "http://") {
 		t.Fatal("frontend contains unsafe rendering or external runtime reference")
 	}
-	if !strings.Contains(string(javascript), "if (!managementKey)") || !strings.Contains(string(javascript), "if (managementKey && !document.hidden)") {
-		t.Fatal("frontend may poll the authenticated API without an in-memory key")
+	if !strings.Contains(string(javascript), "cli-proxy-auth") || !strings.Contains(string(javascript), "Authorization") {
+		t.Fatal("frontend does not reuse the CPA management authentication state")
+	}
+	if strings.Contains(string(javascript), "managementKeyInput") || strings.Contains(string(javascript), "connectButton") {
+		t.Fatal("frontend still contains a second Management Key prompt")
 	}
 	page := New(seededRuntime(t)).resource(resourcePrefix + "/status")
 	if page.StatusCode != http.StatusOK || !strings.Contains(page.Headers.Get("Content-Security-Policy"), "default-src 'self'") {
 		t.Fatalf("page response = %#v", page)
+	}
+	if strings.Contains(string(page.Body), "managementKeyInput") || strings.Contains(string(page.Body), "connectButton") {
+		t.Fatal("page still renders a second Management Key prompt")
 	}
 }
 

@@ -310,8 +310,8 @@ func (h *Handler) resource(path string) pluginapi.ManagementResponse {
 }
 
 func (h *Handler) sameOrigin(headers http.Header) bool {
-	if site := strings.ToLower(strings.TrimSpace(headers.Get("Sec-Fetch-Site"))); site != "" && site != "same-origin" && site != "none" {
-		return false
+	if site := strings.ToLower(strings.TrimSpace(headers.Get("Sec-Fetch-Site"))); site != "" {
+		return site == "same-origin" || site == "none"
 	}
 	value := strings.TrimSpace(headers.Get("Origin"))
 	if value == "" {

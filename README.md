@@ -41,7 +41,7 @@ plugins:
 export CPA_MANAGEMENT_KEY='your-management-key'
 ```
 
-也可以在插件管理页直接填写 `management-url` 和 `management-key`。页面只显示密钥是否已配置，不会回显密钥内容。
+也可以在插件管理页直接填写 `management-url` 和 `management-key`。插件自己的账号页面会复用 CPA 管理中心已保存的登录凭据，不再要求重复输入 Management Key；页面只显示插件配置中的密钥是否已配置，不会回显密钥内容。
 
 商店安装要求 CLIProxyAPI 服务端能够访问商店源、GitHub API 和 GitHub Release 下载地址。手动安装时请从 Release 下载对应平台 ZIP，只解压其中的动态库，并保持 basename 为 `cpa-codex-auto-reset`。
 
@@ -79,7 +79,7 @@ export CPA_MANAGEMENT_KEY='your-management-key'
 GET /v0/resource/plugins/cpa-codex-auto-reset/status
 ```
 
-页面默认中文，支持账号搜索、参与筛选、分页、批量参与/退出、立即扫描和重置日志。由于资源页本身不携带 Management Key，首次打开时可在密码框输入 Key；它只保存在当前页面内存中，刷新后清除。
+页面默认中文，支持账号搜索、参与筛选、分页、批量参与/退出、立即扫描和重置日志。页面从同源 CPA 管理中心的已保存登录状态读取 Management Key，不显示密钥输入框，也不会从插件配置或接口回显密钥。请在 CPA 管理中心连接时选择记住密钥，以便嵌入的插件页面复用认证状态。
 
 受 CLIProxyAPI Management 鉴权保护的接口：
 

@@ -3,17 +3,52 @@
 const apiBase = '/v0/management/plugins/cpa-codex-auto-reset';
 const pageSize = 15;
 const state = { accounts: [], logs: [], page: 1, selected: new Set() };
-let managementKey = '';
+const authStorageKey = 'cli-proxy-auth';
+const legacyManagementKeyStorageKey = 'managementKey';
+const storagePrefix = 'enc::v1::';
+const storageSalt = 'cli-proxy-api-webui::secure-storage';
 
 const $ = (id) => document.getElementById(id);
 const formatTime = (value) => value ? new Intl.DateTimeFormat('zh-CN', {dateStyle:'short',timeStyle:'medium'}).format(new Date(value)) : '—';
 
+function decodeStorageValue(value) {
+  if (!value || !value.startsWith(storagePrefix)) return value;
+  const encrypted = atob(value.slice(storagePrefix.length));
+  const data = Uint8Array.from(encrypted, (character) => character.charCodeAt(0));
+  const key = new TextEncoder().encode(`${storageSalt}|${window.location.host}|${navigator.userAgent}`);
+  const decoded = new Uint8Array(data.length);
+  data.forEach((byte, index) => { decoded[index] = byte ^ key[index % key.length]; });
+  return new TextDecoder().decode(decoded);
+}
+
+function readStoredJSON(storage, key) {
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    const decoded = decodeStorageValue(raw);
+    try { return JSON.parse(decoded); } catch { return decoded; }
+  } catch { return null; }
+}
+
+function readManagementKey() {
+  const persisted = readStoredJSON(window.localStorage, authStorageKey);
+  const current = persisted && persisted.state ? persisted.state.managementKey : persisted && persisted.managementKey;
+  if (typeof current === 'string' && current.trim()) return current.trim();
+  const legacy = readStoredJSON(window.localStorage, legacyManagementKeyStorageKey);
+  return typeof legacy === 'string' ? legacy.trim() : '';
+}
+
 async function request(path, options = {}) {
-  const authentication = managementKey ? {'Authorization': `Bearer ${managementKey}`} : {};
+  const managementKey = readManagementKey();
+  if (!managementKey) {
+    const error = new Error('未找到 CPA 管理页的登录凭据，请返回管理页重新连接并选择记住密钥。');
+    error.status = 401;
+    throw error;
+  }
   const response = await fetch(apiBase + path, {
     credentials: 'same-origin',
     ...options,
-    headers: {'Content-Type':'application/json', ...authentication, ...(options.headers || {})}
+    headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${managementKey}`, ...(options.headers || {})}
   });
   const payload = await response.json().catch(() => ({error:'invalid_response'}));
   if (!response.ok) {
@@ -98,10 +133,6 @@ function renderLogs() {
 }
 
 async function load() {
-  if (!managementKey) {
-    showError('请输入 CLIProxyAPI Management Key 后连接；密钥只保存在当前页面内存中。');
-    return;
-  }
   try {
     const status = await request('/status');
     const [accounts, logs] = await Promise.all([request('/accounts'), request('/logs')]);
@@ -117,13 +148,8 @@ async function load() {
     warning.classList.toggle('hidden', !status.config.remote_management_warning);
     renderAccounts(); renderLogs(); showError('');
   } catch (error) {
-    handleAuthenticationError(error);
     showError(`读取插件状态失败：${error.message}`);
   }
-}
-
-function handleAuthenticationError(error) {
-  if (error && (error.status === 401 || error.status === 403)) managementKey = '';
 }
 
 async function updateParticipation(ids, participating) {
@@ -131,13 +157,13 @@ async function updateParticipation(ids, participating) {
   try {
     await request('/accounts/participation', {method:'PUT', body:JSON.stringify({auth_ids:ids,participating})});
     ids.forEach((id) => state.selected.delete(id)); await load();
-  } catch (error) { handleAuthenticationError(error); showError(`更新参与状态失败：${error.message}`); }
+  } catch (error) { showError(`更新参与状态失败：${error.message}`); }
 }
 
 async function scan() {
   const button = $('scanButton'); button.disabled = true; button.textContent = '扫描中…';
   try { await request('/scan', {method:'POST', body:'{}'}); await load(); }
-  catch (error) { handleAuthenticationError(error); showError(`扫描未启动：${error.message}`); }
+  catch (error) { showError(`扫描未启动：${error.message}`); }
   finally { button.disabled = false; button.textContent = '立即扫描'; }
 }
 
@@ -146,12 +172,6 @@ $('participationFilter').addEventListener('change', () => { state.page = 1; rend
 $('prevPage').addEventListener('click', () => { state.page -= 1; renderAccounts(); });
 $('nextPage').addEventListener('click', () => { state.page += 1; renderAccounts(); });
 $('scanButton').addEventListener('click', scan);
-$('connectButton').addEventListener('click', () => {
-  managementKey = $('managementKeyInput').value.trim();
-  $('managementKeyInput').value = '';
-  if (!managementKey) { showError('Management Key 不能为空。'); return; }
-  load();
-});
 $('batchJoin').addEventListener('click', () => updateParticipation([...state.selected], true));
 $('batchLeave').addEventListener('click', () => updateParticipation([...state.selected], false));
 $('selectAll').addEventListener('change', (event) => {
@@ -161,4 +181,4 @@ $('selectAll').addEventListener('change', (event) => {
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 load();
-setInterval(() => { if (managementKey && !document.hidden) load(); }, 15000);
+setInterval(() => { if (!document.hidden) load(); }, 15000);
