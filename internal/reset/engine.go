@@ -248,7 +248,7 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 	}
 	creditDecision := "candidate"
 	nextCandidateAt := time.Time{}
-	if credit.ExpiresAt.Sub(now) > CandidateWindow {
+	if !usage.Blocked && credit.ExpiresAt.Sub(now) > CandidateWindow {
 		creditDecision = "outside_candidate_window"
 		nextCandidateAt = credit.ExpiresAt.Add(-CandidateWindow)
 	}
