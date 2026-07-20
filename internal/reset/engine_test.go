@@ -104,6 +104,18 @@ func TestSuccessfulResetPersistsCooldownAndClearsLocalQuota(t *testing.T) {
 	if item.PendingAttempt != nil || item.PendingLocalClear != nil || item.PostResetCooldown == nil || !item.PostResetCooldown.Until.After(engine.now()) {
 		t.Fatalf("account state = %#v", item)
 	}
+	if len(loaded.Logs) < 2 || loaded.Logs[0].Event != "scan_started" || loaded.Logs[len(loaded.Logs)-1].Event != "scan_completed" {
+		t.Fatalf("scan logs = %#v", loaded.Logs)
+	}
+	foundAttemptTrigger := false
+	for _, entry := range loaded.Logs {
+		if entry.Event == "reset_attempt_started" && entry.Trigger == "manual" {
+			foundAttemptTrigger = true
+		}
+	}
+	if !foundAttemptTrigger {
+		t.Fatalf("reset attempt trigger missing: %#v", loaded.Logs)
+	}
 }
 
 func TestAmbiguousConsumeReusesOriginalIdempotencyKey(t *testing.T) {

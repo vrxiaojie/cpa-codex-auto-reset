@@ -150,6 +150,12 @@ func (e *Engine) Scan(ctx context.Context, trigger string) (state.ScanSummary, e
 		summary.Error = "plugin configuration is incomplete"
 		return summary, errors.New(summary.Error)
 	}
+	if errLog := e.log(state.LogEntry{Time: started, Event: "scan_started", Trigger: summary.Trigger}); errLog != nil {
+		summary.FinishedAt = e.now().UTC()
+		summary.Errors = 1
+		summary.Error = "persistent state is unavailable"
+		return summary, errors.New(summary.Error)
+	}
 	accounts, errDiscover := e.discovery.Discover()
 	if errDiscover != nil {
 		summary.FinishedAt = e.now().UTC()
@@ -236,8 +242,14 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 	if !okCredit {
 		return false, false, nil
 	}
+	creditDecision := "candidate"
+	nextCandidateAt := time.Time{}
 	if credit.ExpiresAt.Sub(now) > CandidateWindow {
-		_ = e.log(state.LogEntry{Time: now, Event: "credit_discovered", Trigger: trigger, AccountRef: item.Ref, Participating: true, CreditRef: credit.Ref, Decision: "outside_candidate_window", NextAttemptAt: credit.ExpiresAt.Add(-CandidateWindow)})
+		creditDecision = "outside_candidate_window"
+		nextCandidateAt = credit.ExpiresAt.Add(-CandidateWindow)
+	}
+	_ = e.log(state.LogEntry{Time: now, Event: "credit_discovered", Trigger: trigger, AccountRef: item.Ref, Participating: true, CreditRef: credit.Ref, Decision: creditDecision, NextAttemptAt: nextCandidateAt})
+	if creditDecision == "outside_candidate_window" {
 		return false, false, nil
 	}
 	usage, errUsage := e.codex.Usage(ctx, credentials)
@@ -276,7 +288,7 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 	if errAttempt != nil {
 		return true, false, errAttempt
 	}
-	if errPersist := e.persistAttempt(item.Ref, attempt, now); errPersist != nil {
+	if errPersist := e.persistAttempt(item.Ref, trigger, attempt, now); errPersist != nil {
 		return true, false, errPersist
 	}
 	result, errConsume := e.codex.Consume(ctx, credentials, credit.ID, attempt.IdempotencyKey)
@@ -422,7 +434,7 @@ func (e *Engine) retryLocalClear(ctx context.Context, trigger string, item accou
 	return false
 }
 
-func (e *Engine) persistAttempt(accountRef string, attempt *state.Attempt, now time.Time) error {
+func (e *Engine) persistAttempt(accountRef, trigger string, attempt *state.Attempt, now time.Time) error {
 	return e.store.Update(func(current *state.State) error {
 		if !e.active.Load() {
 			return errors.New("reset engine is inactive")
@@ -438,7 +450,7 @@ func (e *Engine) persistAttempt(accountRef string, attempt *state.Attempt, now t
 			return errors.New("account entered cooldown")
 		}
 		accountState.PendingAttempt = attempt
-		current.AppendLog(state.LogEntry{Time: now, Event: "reset_attempt_started", AccountRef: accountRef, Participating: true, CreditRef: attempt.CreditRef, Decision: "consume", AttemptIDRef: attempt.AttemptIDRef})
+		current.AppendLog(state.LogEntry{Time: now, Event: "reset_attempt_started", Trigger: trigger, AccountRef: accountRef, Participating: true, CreditRef: attempt.CreditRef, Decision: "consume", AttemptIDRef: attempt.AttemptIDRef})
 		return nil
 	})
 }
