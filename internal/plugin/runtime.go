@@ -23,7 +23,6 @@ import (
 const (
 	ID         = "cpa-codex-auto-reset"
 	Name       = "Codex Auto Reset"
-	Version    = "0.1.0"
 	Author     = "vrxiaojie"
 	Repository = "https://github.com/vrxiaojie/cpa-codex-auto-reset"
 )

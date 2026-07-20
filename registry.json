@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    {
+      "id": "cpa-codex-auto-reset",
+      "name": "Codex Auto Reset",
+      "description": "Safely reset eligible Codex quota for explicitly participating accounts.",
+      "author": "vrxiaojie",
+      "version": "0.1.0",
+      "repository": "https://github.com/vrxiaojie/cpa-codex-auto-reset",
+      "homepage": "https://github.com/vrxiaojie/cpa-codex-auto-reset",
+      "license": "MIT",
+      "tags": ["codex", "quota", "reset", "management"],
+      "install": {"type": "github-release"}
+    }
+  ]
+}

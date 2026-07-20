@@ -1,0 +1,165 @@
+name: test-build-release
+
+on:
+  push:
+    branches: ["main", "feat/**", "fix/**"]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          code_version="$(sed -n 's/^var Version = "\([^"]*\)"/\1/p' internal/plugin/version.go)"
+          registry_version="$(jq -r '.plugins[] | select(.id == "cpa-codex-auto-reset") | .version' registry.json)"
+          test -n "${code_version}"
+          test "${code_version}" = "${registry_version}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            test "${GITHUB_REF_NAME}" = "v${code_version}"
+          fi
+          echo "version=${code_version}" >> "${GITHUB_OUTPUT}"
+
+  test:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - run: gofmt -w . && git diff --exit-code
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go test -race ./...
+
+  build:
+    needs: [prepare, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: so
+            cc: gcc
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            ext: so
+            cc: aarch64-linux-gnu-gcc
+          - runner: macos-14
+            goos: darwin
+            goarch: amd64
+            ext: dylib
+            cc: clang
+          - runner: macos-14
+            goos: darwin
+            goarch: arm64
+            ext: dylib
+            cc: clang
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: dll
+            cc: C:/msys64/mingw64/bin/gcc.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Build and package
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET_GOOS: ${{ matrix.goos }}
+          TARGET_GOARCH: ${{ matrix.goarch }}
+          EXT: ${{ matrix.ext }}
+          TARGET_CC: ${{ matrix.cc }}
+        run: |
+          set -euo pipefail
+          plugin="cpa-codex-auto-reset"
+          target="${TARGET_GOOS}_${TARGET_GOARCH}"
+          mkdir -p "build/${target}" dist
+          export CGO_ENABLED=1 GOOS="${TARGET_GOOS}" GOARCH="${TARGET_GOARCH}" CC="${TARGET_CC}"
+          if [[ "${TARGET_GOOS}" == "darwin" && "${TARGET_GOARCH}" == "amd64" ]]; then
+            export CGO_CFLAGS="-arch x86_64" CGO_LDFLAGS="-arch x86_64"
+          fi
+          go build -buildmode=c-shared -trimpath -buildvcs=false \
+            -ldflags="-s -w -X github.com/vrxiaojie/cpa-codex-auto-reset/internal/plugin.Version=${VERSION}" \
+            -o "build/${target}/${plugin}.${EXT}" .
+          rm -f "build/${target}/${plugin}.h"
+          (
+            cd "build/${target}"
+            python -m zipfile -c "../../dist/${plugin}_${VERSION}_${TARGET_GOOS}_${TARGET_GOARCH}.zip" "${plugin}.${EXT}"
+          )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  verify-packages:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums and verify layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum *.zip | sort -k2 > checksums.txt
+          cd ..
+          bash scripts/verify-release-assets.sh "${{ needs.prepare.outputs.version }}" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release-assets
+          path: |
+            dist/*.zip
+            dist/checksums.txt
+          if-no-files-found: error
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, verify-packages]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-release-assets
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/checksums.txt
+          generate_release_notes: true
+          body: |
+            ## 安装
+
+            推荐在 CLIProxyAPI 配置中添加商店源：
+
+            `https://raw.githubusercontent.com/vrxiaojie/cpa-codex-auto-reset/main/registry.json`
+
+            Release ZIP 命名为 `cpa-codex-auto-reset_{version}_{goos}_{goarch}.zip`，每个 ZIP 根目录仅包含对应平台的一个动态库。`checksums.txt` 提供全部 ZIP 的 SHA-256。
