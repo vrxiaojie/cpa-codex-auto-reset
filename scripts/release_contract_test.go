@@ -52,4 +52,13 @@ func TestRegistryAndReleaseContractUseVersion010(t *testing.T) {
 	if !strings.Contains(string(rawWorkflow), "-buildmode=c-shared") || !strings.Contains(string(rawWorkflow), "checksums.txt") {
 		t.Fatal("workflow is missing c-shared build or checksum publication")
 	}
+	workflowText := string(rawWorkflow)
+	setupMSYS2 := strings.Index(workflowText, "msys2/setup-msys2@v2")
+	buildPackage := strings.Index(workflowText, "name: Build and package")
+	if setupMSYS2 < 0 || !strings.Contains(workflowText, "mingw-w64-x86_64-gcc") {
+		t.Fatal("workflow must install the Windows MinGW64 C compiler")
+	}
+	if buildPackage < 0 || setupMSYS2 > buildPackage {
+		t.Fatal("workflow must install the Windows C compiler before building")
+	}
 }
