@@ -53,14 +53,17 @@ type Engine struct {
 	now       func() time.Time
 
 	active  atomic.Bool
+	started atomic.Bool
 	scanMu  sync.Mutex
 	locksMu sync.Mutex
 	locks   map[string]*sync.Mutex
+	ctx     context.Context
 	cancel  context.CancelFunc
 	done    chan struct{}
 }
 
 func New(config pluginconfig.Config, discovery Discovery, codexClient CodexClient, clearer LocalClearer, store *state.Store) *Engine {
+	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
 	engine := &Engine{
 		config:    config,
 		discovery: discovery,
@@ -69,6 +72,8 @@ func New(config pluginconfig.Config, discovery Discovery, codexClient CodexClien
 		store:     store,
 		now:       time.Now,
 		locks:     make(map[string]*sync.Mutex),
+		ctx:       lifecycleCtx,
+		cancel:    lifecycleCancel,
 		done:      make(chan struct{}),
 	}
 	engine.active.Store(true)
@@ -76,22 +81,22 @@ func New(config pluginconfig.Config, discovery Discovery, codexClient CodexClien
 }
 
 func (e *Engine) Start(parent context.Context) {
-	if e == nil || !e.config.Enabled || !e.config.Safe().Complete {
+	if e == nil || !e.config.Enabled || !e.config.Safe().Complete || !e.started.CompareAndSwap(false, true) {
 		return
 	}
-	ctx, cancel := context.WithCancel(parent)
-	e.cancel = cancel
 	go func() {
 		defer close(e.done)
+		stopParent := context.AfterFunc(parent, e.cancel)
+		defer stopParent()
 		ticker := time.NewTicker(time.Duration(e.config.ScanIntervalSeconds) * time.Second)
 		defer ticker.Stop()
-		_, _ = e.Scan(ctx, "startup")
+		_, _ = e.Scan(e.ctx, "startup")
 		for {
 			select {
-			case <-ctx.Done():
+			case <-e.ctx.Done():
 				return
 			case <-ticker.C:
-				_, _ = e.Scan(ctx, "scheduled")
+				_, _ = e.Scan(e.ctx, "scheduled")
 			}
 		}
 	}()
@@ -101,8 +106,10 @@ func (e *Engine) Stop() {
 	if e == nil || !e.active.Swap(false) {
 		return
 	}
-	if e.cancel != nil {
-		e.cancel()
+	e.cancel()
+	e.scanMu.Lock()
+	e.scanMu.Unlock()
+	if e.started.Load() {
 		select {
 		case <-e.done:
 		case <-time.After(15 * time.Second):
@@ -118,6 +125,16 @@ func (e *Engine) Scan(ctx context.Context, trigger string) (state.ScanSummary, e
 		return state.ScanSummary{}, errors.New("scan already in progress")
 	}
 	defer e.scanMu.Unlock()
+	if !e.active.Load() {
+		return state.ScanSummary{}, errors.New("reset engine is inactive")
+	}
+	scanCtx, cancelScan := context.WithCancel(ctx)
+	stopLifecycle := context.AfterFunc(e.ctx, cancelScan)
+	defer func() {
+		stopLifecycle()
+		cancelScan()
+	}()
+	ctx = scanCtx
 	started := e.now().UTC()
 	summary := state.ScanSummary{StartedAt: started, Trigger: sanitizeTrigger(trigger)}
 	if !e.config.Enabled || !e.config.Safe().Complete {
@@ -194,11 +211,11 @@ func (e *Engine) processAccount(ctx context.Context, trigger string, item accoun
 		_ = e.log(state.LogEntry{Time: now, Event: "reset_suppressed_cooldown", Trigger: trigger, AccountRef: item.Ref, Participating: true, NextAttemptAt: accountState.PostResetCooldown.Until})
 		return false, false, nil
 	}
+	if accountState.FailureBackoff != nil && accountState.FailureBackoff.Until.After(now) {
+		return accountState.PendingAttempt != nil, false, nil
+	}
 	credentials := codex.Credentials{AccessToken: item.AccessToken, AccountID: item.AccountID}
 	if accountState.PendingAttempt != nil {
-		if accountState.FailureBackoff != nil && accountState.FailureBackoff.Until.After(now) {
-			return true, false, nil
-		}
 		return true, e.resolvePending(ctx, trigger, item, credentials, accountState.PendingAttempt), nil
 	}
 	credits, errCredits := e.codex.Credits(ctx, credentials, now)
@@ -435,11 +452,14 @@ func (e *Engine) markAmbiguous(accountRef, trigger string, attempt *state.Attemp
 }
 
 func (e *Engine) bumpPendingVerification(accountRef string, attempt *state.Attempt, reason string) {
+	now := e.now().UTC()
+	delay := transientBackoff(nil, attempt.VerificationCount+1, time.Duration(e.config.FailureBackoffSeconds)*time.Second)
 	_ = e.store.Update(func(current *state.State) error {
 		accountState := current.Accounts[accountRef]
 		if accountState != nil && accountState.PendingAttempt != nil && accountState.PendingAttempt.IdempotencyKey == attempt.IdempotencyKey {
 			accountState.PendingAttempt.VerificationCount++
 			accountState.PendingAttempt.Phase = "ambiguous"
+			accountState.FailureBackoff = &state.Backoff{Until: now.Add(delay), Fingerprint: attempt.Fingerprint, Level: accountState.PendingAttempt.VerificationCount, Reason: reason}
 			accountState.LastResult = reason
 		}
 		return nil

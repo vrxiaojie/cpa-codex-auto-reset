@@ -173,6 +173,27 @@ func TestNothingToResetSuppressesSameFingerprintAfterBackoff(t *testing.T) {
 	}
 }
 
+func TestTransientFailureBackoffSuppressesImmediateRescanRequests(t *testing.T) {
+	engine, _, client, _ := testEngine(t, true)
+	client.credits = func(call int) (codex.CreditList, error) {
+		if call > 1 {
+			t.Fatalf("Credits() call = %d during active backoff", call)
+		}
+		return codex.CreditList{}, errors.New("temporary failure")
+	}
+	first, errScan := engine.Scan(context.Background(), "manual")
+	if errScan != nil || first.Errors != 1 {
+		t.Fatalf("first Scan() summary=%#v error=%v", first, errScan)
+	}
+	second, errScan := engine.Scan(context.Background(), "manual")
+	if errScan != nil || second.Errors != 0 {
+		t.Fatalf("second Scan() summary=%#v error=%v", second, errScan)
+	}
+	if client.creditCalls != 1 {
+		t.Fatalf("credit calls = %d", client.creditCalls)
+	}
+}
+
 func TestConcurrentScansDoNotDuplicateConsume(t *testing.T) {
 	engine, _, client, _ := testEngine(t, true)
 	entered := make(chan struct{})
