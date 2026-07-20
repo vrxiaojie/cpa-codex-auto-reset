@@ -16,7 +16,11 @@ async function request(path, options = {}) {
     headers: {'Content-Type':'application/json', ...authentication, ...(options.headers || {})}
   });
   const payload = await response.json().catch(() => ({error:'invalid_response'}));
-  if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(payload.error || `HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
@@ -94,8 +98,13 @@ function renderLogs() {
 }
 
 async function load() {
+  if (!managementKey) {
+    showError('请输入 CLIProxyAPI Management Key 后连接；密钥只保存在当前页面内存中。');
+    return;
+  }
   try {
-    const [status, accounts, logs] = await Promise.all([request('/status'), request('/accounts'), request('/logs')]);
+    const status = await request('/status');
+    const [accounts, logs] = await Promise.all([request('/accounts'), request('/logs')]);
     state.accounts = accounts.accounts || []; state.logs = logs.logs || [];
     $('runStatus').textContent = status.config.enabled && status.config.complete ? '运行中' : '配置不完整';
     $('lastScan').textContent = formatTime(status.last_scan && status.last_scan.finished_at);
@@ -107,7 +116,14 @@ async function load() {
     warning.textContent = status.config.remote_management_warning ? 'Management API 使用远程地址，请确认 TLS 与网络边界安全。' : '';
     warning.classList.toggle('hidden', !status.config.remote_management_warning);
     renderAccounts(); renderLogs(); showError('');
-  } catch (error) { showError(`读取插件状态失败：${error.message}`); }
+  } catch (error) {
+    handleAuthenticationError(error);
+    showError(`读取插件状态失败：${error.message}`);
+  }
+}
+
+function handleAuthenticationError(error) {
+  if (error && (error.status === 401 || error.status === 403)) managementKey = '';
 }
 
 async function updateParticipation(ids, participating) {
@@ -115,13 +131,13 @@ async function updateParticipation(ids, participating) {
   try {
     await request('/accounts/participation', {method:'PUT', body:JSON.stringify({auth_ids:ids,participating})});
     ids.forEach((id) => state.selected.delete(id)); await load();
-  } catch (error) { showError(`更新参与状态失败：${error.message}`); }
+  } catch (error) { handleAuthenticationError(error); showError(`更新参与状态失败：${error.message}`); }
 }
 
 async function scan() {
   const button = $('scanButton'); button.disabled = true; button.textContent = '扫描中…';
   try { await request('/scan', {method:'POST', body:'{}'}); await load(); }
-  catch (error) { showError(`扫描未启动：${error.message}`); }
+  catch (error) { handleAuthenticationError(error); showError(`扫描未启动：${error.message}`); }
   finally { button.disabled = false; button.textContent = '立即扫描'; }
 }
 
@@ -131,8 +147,9 @@ $('prevPage').addEventListener('click', () => { state.page -= 1; renderAccounts(
 $('nextPage').addEventListener('click', () => { state.page += 1; renderAccounts(); });
 $('scanButton').addEventListener('click', scan);
 $('connectButton').addEventListener('click', () => {
-  managementKey = $('managementKeyInput').value;
+  managementKey = $('managementKeyInput').value.trim();
   $('managementKeyInput').value = '';
+  if (!managementKey) { showError('Management Key 不能为空。'); return; }
   load();
 });
 $('batchJoin').addEventListener('click', () => updateParticipation([...state.selected], true));
@@ -144,4 +161,4 @@ $('selectAll').addEventListener('change', (event) => {
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 load();
-setInterval(() => { if (!document.hidden) load(); }, 15000);
+setInterval(() => { if (managementKey && !document.hidden) load(); }, 15000);
