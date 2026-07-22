@@ -60,6 +60,7 @@ func (d *Discovery) Discover() ([]Account, error) {
 			AccessToken string `json:"access_token"`
 			IDToken     string `json:"id_token"`
 			Email       string `json:"email"`
+			Disabled    bool   `json:"disabled"`
 		}
 		if errUnmarshal := json.Unmarshal(response.JSON, &credential); errUnmarshal != nil {
 			continue
@@ -81,7 +82,7 @@ func (d *Discovery) Discover() ([]Account, error) {
 			Label:       firstNonEmpty(entry.Label, entry.Name, credential.Email, tokenEmail, "Codex 账号"),
 			Email:       firstNonEmpty(credential.Email, entry.Email, tokenEmail),
 			FileName:    firstNonEmpty(response.Name, entry.Name),
-			Disabled:    entry.Disabled || entry.Unavailable,
+			Disabled:    entry.Disabled || entry.Unavailable || credential.Disabled,
 		}
 		current, exists := byAccountID[accountID]
 		if !exists || prefer(candidate, current) {
