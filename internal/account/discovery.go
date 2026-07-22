@@ -104,7 +104,15 @@ func isCodexFile(entry pluginapi.HostAuthFileEntry) bool {
 		return false
 	}
 	source := strings.TrimSpace(entry.Source)
-	return source == "" || strings.EqualFold(source, "file")
+	if source == "" || strings.EqualFold(source, "file") {
+		return true
+	}
+	// A newly persisted OAuth account can briefly be reported by the host as
+	// memory-backed while still carrying its physical file path. GetAuth below
+	// remains the authoritative check that the credential is actually readable
+	// from disk, so accepting this transitional entry does not admit runtime-only
+	// credentials.
+	return strings.EqualFold(source, "memory") && strings.TrimSpace(entry.Path) != ""
 }
 
 func stableAuthID(entry pluginapi.HostAuthFileEntry) string {

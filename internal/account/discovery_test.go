@@ -58,3 +58,53 @@ func TestDiscoverRequiresAccountAndAccessToken(t *testing.T) {
 		t.Fatalf("accounts = %#v", accounts)
 	}
 }
+
+func TestDiscoverIncludesNewFileBackedAccountTemporarilyReportedAsMemory(t *testing.T) {
+	source := fakeSource{
+		entries: []pluginapi.HostAuthFileEntry{{
+			ID:        "auth-new",
+			AuthIndex: "new-index",
+			Name:      "codex-new.json",
+			Provider:  "codex",
+			Source:    "memory",
+			Path:      "/auth/codex-new.json",
+		}},
+		auths: map[string]json.RawMessage{
+			"new-index": []byte(`{"type":"codex","account_id":"account-new","access_token":"secret-new","email":"new@example.com"}`),
+		},
+	}
+
+	accounts, errDiscover := NewDiscovery(source).Discover()
+	if errDiscover != nil {
+		t.Fatalf("Discover() error = %v", errDiscover)
+	}
+	if len(accounts) != 1 {
+		t.Fatalf("accounts = %#v", accounts)
+	}
+	if accounts[0].AuthIndex != "new-index" || accounts[0].FileName != "new-index.json" {
+		t.Fatalf("account = %#v", accounts[0])
+	}
+}
+
+func TestDiscoverRejectsRuntimeOnlyMemoryAccount(t *testing.T) {
+	source := fakeSource{
+		entries: []pluginapi.HostAuthFileEntry{{
+			ID:          "runtime",
+			AuthIndex:   "runtime-index",
+			Provider:    "codex",
+			Source:      "memory",
+			RuntimeOnly: true,
+		}},
+		auths: map[string]json.RawMessage{
+			"runtime-index": []byte(`{"type":"codex","account_id":"runtime-account","access_token":"runtime-secret"}`),
+		},
+	}
+
+	accounts, errDiscover := NewDiscovery(source).Discover()
+	if errDiscover != nil {
+		t.Fatalf("Discover() error = %v", errDiscover)
+	}
+	if len(accounts) != 0 {
+		t.Fatalf("accounts = %#v", accounts)
+	}
+}
