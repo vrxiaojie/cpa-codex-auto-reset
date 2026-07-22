@@ -1,6 +1,7 @@
 package account
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 
@@ -107,4 +108,66 @@ func TestDiscoverRejectsRuntimeOnlyMemoryAccount(t *testing.T) {
 	if len(accounts) != 0 {
 		t.Fatalf("accounts = %#v", accounts)
 	}
+}
+
+func TestDiscoverOAuthAccountIDFromIDToken(t *testing.T) {
+	idToken := testJWT(t, map[string]any{
+		"email": "oauth@example.com",
+		"https://api.openai.com/auth": map[string]any{
+			"chatgpt_account_id": "oauth-account-id",
+		},
+	})
+	source := fakeSource{
+		entries: []pluginapi.HostAuthFileEntry{{
+			ID:        "oauth-auth",
+			AuthIndex: "oauth-index",
+			Name:      "codex-oauth.json",
+			Provider:  "codex",
+			Source:    "file",
+		}},
+		auths: map[string]json.RawMessage{
+			"oauth-index": json.RawMessage(`{"type":"codex","access_token":"oauth-secret","id_token":"` + idToken + `","email":"oauth@example.com"}`),
+		},
+	}
+
+	accounts, errDiscover := NewDiscovery(source).Discover()
+	if errDiscover != nil {
+		t.Fatalf("Discover() error = %v", errDiscover)
+	}
+	if len(accounts) != 1 {
+		t.Fatalf("accounts = %#v", accounts)
+	}
+	if accounts[0].AccountID != "oauth-account-id" || accounts[0].AccessToken != "oauth-secret" {
+		t.Fatalf("account = %#v", accounts[0])
+	}
+}
+
+func TestDiscoverRejectsOAuthAccountWithoutVerifiableAccountID(t *testing.T) {
+	source := fakeSource{
+		entries: []pluginapi.HostAuthFileEntry{{AuthIndex: "oauth-index", Provider: "codex", Source: "file"}},
+		auths: map[string]json.RawMessage{
+			"oauth-index": []byte(`{"type":"codex","access_token":"opaque-access-token","id_token":"malformed"}`),
+		},
+	}
+
+	accounts, errDiscover := NewDiscovery(source).Discover()
+	if errDiscover != nil {
+		t.Fatalf("Discover() error = %v", errDiscover)
+	}
+	if len(accounts) != 0 {
+		t.Fatalf("accounts = %#v", accounts)
+	}
+}
+
+func testJWT(t *testing.T, claims map[string]any) string {
+	t.Helper()
+	header, errMarshal := json.Marshal(map[string]string{"alg": "none", "typ": "JWT"})
+	if errMarshal != nil {
+		t.Fatalf("marshal JWT header: %v", errMarshal)
+	}
+	payload, errMarshal := json.Marshal(claims)
+	if errMarshal != nil {
+		t.Fatalf("marshal JWT claims: %v", errMarshal)
+	}
+	return base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
 }

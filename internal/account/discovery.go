@@ -2,6 +2,7 @@ package account
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -57,23 +58,28 @@ func (d *Discovery) Discover() ([]Account, error) {
 			Type        string `json:"type"`
 			AccountID   string `json:"account_id"`
 			AccessToken string `json:"access_token"`
+			IDToken     string `json:"id_token"`
 			Email       string `json:"email"`
 		}
 		if errUnmarshal := json.Unmarshal(response.JSON, &credential); errUnmarshal != nil {
 			continue
 		}
-		if !strings.EqualFold(strings.TrimSpace(credential.Type), "codex") || strings.TrimSpace(credential.AccountID) == "" || strings.TrimSpace(credential.AccessToken) == "" {
+		if !strings.EqualFold(strings.TrimSpace(credential.Type), "codex") || strings.TrimSpace(credential.AccessToken) == "" {
 			continue
 		}
-		accountID := strings.TrimSpace(credential.AccountID)
+		tokenAccountID, tokenEmail := oauthIdentity(credential.IDToken, credential.AccessToken)
+		accountID := firstNonEmpty(credential.AccountID, tokenAccountID)
+		if accountID == "" {
+			continue
+		}
 		candidate := Account{
 			Ref:         shortHash("account", accountID),
 			AuthID:      stableAuthID(entry),
 			AuthIndex:   strings.TrimSpace(entry.AuthIndex),
 			AccountID:   accountID,
 			AccessToken: strings.TrimSpace(credential.AccessToken),
-			Label:       firstNonEmpty(entry.Label, entry.Name, credential.Email, "Codex 账号"),
-			Email:       firstNonEmpty(credential.Email, entry.Email),
+			Label:       firstNonEmpty(entry.Label, entry.Name, credential.Email, tokenEmail, "Codex 账号"),
+			Email:       firstNonEmpty(credential.Email, entry.Email, tokenEmail),
 			FileName:    firstNonEmpty(response.Name, entry.Name),
 			Disabled:    entry.Disabled || entry.Unavailable,
 		}
@@ -90,6 +96,35 @@ func (d *Discovery) Discover() ([]Account, error) {
 		return accounts[i].Ref < accounts[j].Ref
 	})
 	return accounts, nil
+}
+
+func oauthIdentity(tokens ...string) (string, string) {
+	for _, token := range tokens {
+		parts := strings.Split(strings.TrimSpace(token), ".")
+		if len(parts) != 3 {
+			continue
+		}
+		payload, errDecode := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+		if errDecode != nil {
+			continue
+		}
+		var claims struct {
+			Email string `json:"email"`
+			Auth  struct {
+				AccountID string `json:"chatgpt_account_id"`
+			} `json:"https://api.openai.com/auth"`
+			FlatAccountID string `json:"https://api.openai.com/auth.chatgpt_account_id"`
+			AccountID     string `json:"chatgpt_account_id"`
+		}
+		if errUnmarshal := json.Unmarshal(payload, &claims); errUnmarshal != nil {
+			continue
+		}
+		accountID := firstNonEmpty(claims.Auth.AccountID, claims.FlatAccountID, claims.AccountID)
+		if accountID != "" {
+			return accountID, strings.TrimSpace(claims.Email)
+		}
+	}
+	return "", ""
 }
 
 func isCodexFile(entry pluginapi.HostAuthFileEntry) bool {
