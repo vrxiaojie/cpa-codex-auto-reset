@@ -142,6 +142,30 @@ func TestDiscoverOAuthAccountIDFromIDToken(t *testing.T) {
 	}
 }
 
+func TestDiscoverPrefersCredentialNotDisabledInOAuthFile(t *testing.T) {
+	source := fakeSource{
+		entries: []pluginapi.HostAuthFileEntry{
+			{ID: "old-auth", AuthIndex: "a-old", Name: "old@gmail.com.json", Provider: "codex", Source: "file"},
+			{ID: "new-auth", AuthIndex: "z-new", Name: "new@gmail.com.json", Provider: "codex", Source: "file"},
+		},
+		auths: map[string]json.RawMessage{
+			"a-old": []byte(`{"type":"codex","account_id":"shared-account","access_token":"old-secret","email":"old@gmail.com","disabled":true}`),
+			"z-new": []byte(`{"type":"codex","account_id":"shared-account","access_token":"new-secret","email":"new@gmail.com","disabled":false}`),
+		},
+	}
+
+	accounts, errDiscover := NewDiscovery(source).Discover()
+	if errDiscover != nil {
+		t.Fatalf("Discover() error = %v", errDiscover)
+	}
+	if len(accounts) != 1 {
+		t.Fatalf("accounts = %#v", accounts)
+	}
+	if accounts[0].AuthIndex != "z-new" || accounts[0].Email != "new@gmail.com" || accounts[0].Disabled {
+		t.Fatalf("account = %#v", accounts[0])
+	}
+}
+
 func TestDiscoverRejectsOAuthAccountWithoutVerifiableAccountID(t *testing.T) {
 	source := fakeSource{
 		entries: []pluginapi.HostAuthFileEntry{{AuthIndex: "oauth-index", Provider: "codex", Source: "file"}},

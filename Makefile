@@ -1,5 +1,5 @@
 PLUGIN := cpa-codex-auto-reset
-VERSION := 0.1.5
+VERSION := 0.1.6
 GOOS := $(shell go env GOOS)
 
 ifeq ($(GOOS),darwin)
