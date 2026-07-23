@@ -157,12 +157,12 @@ func (h *Handler) status() pluginapi.ManagementResponse {
 		return jsonError(http.StatusServiceUnavailable, "state_unavailable")
 	}
 	cfg := h.runtime.Config()
-	response := StatusResponse{PluginID: "cpa-codex-auto-reset", Version: "0.1.6", Config: cfg.Safe(), LastScan: current.LastScan}
+	response := StatusResponse{PluginID: "cpa-codex-auto-reset", Version: "0.1.7", Config: cfg.Safe(), LastScan: current.LastScan}
 	if !current.LastScan.FinishedAt.IsZero() {
 		response.NextScan = current.LastScan.FinishedAt.Add(time.Duration(cfg.ScanIntervalSeconds) * time.Second)
 	}
 	for _, item := range current.Accounts {
-		if item == nil {
+		if !item.IsPresent() {
 			continue
 		}
 		response.Counts.Total++
@@ -191,7 +191,7 @@ func (h *Handler) accounts() pluginapi.ManagementResponse {
 	}
 	response := AccountResponse{Accounts: make([]AccountView, 0, len(current.Accounts))}
 	for ref, item := range current.Accounts {
-		if item == nil {
+		if !item.IsPresent() {
 			continue
 		}
 		response.Accounts = append(response.Accounts, AccountView{

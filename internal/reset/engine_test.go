@@ -20,6 +20,23 @@ type fakeDiscovery struct{ accounts []account.Account }
 
 func (f fakeDiscovery) Discover() ([]account.Account, error) { return f.accounts, nil }
 
+type mutableDiscovery struct {
+	mu       sync.Mutex
+	accounts []account.Account
+}
+
+func (d *mutableDiscovery) Discover() ([]account.Account, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]account.Account(nil), d.accounts...), nil
+}
+
+func (d *mutableDiscovery) set(accounts []account.Account) {
+	d.mu.Lock()
+	d.accounts = append([]account.Account(nil), accounts...)
+	d.mu.Unlock()
+}
+
 type scriptedCodex struct {
 	mu          sync.Mutex
 	usage       func(int) (codex.Usage, error)
@@ -83,6 +100,56 @@ func TestNonParticipatingAccountNeverConsumes(t *testing.T) {
 	}
 	if len(client.consumeKeys) != 0 {
 		t.Fatalf("consume keys = %#v", client.consumeKeys)
+	}
+}
+
+func TestScanReconcilesAddedAndRemovedAccounts(t *testing.T) {
+	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	discovery := &mutableDiscovery{accounts: []account.Account{
+		{Ref: "removed", AuthID: "auth-removed", AuthIndex: "index-removed", AccountID: "account-removed", AccessToken: "token-removed", Label: "Removed"},
+		{Ref: "retained", AuthID: "auth-retained", AuthIndex: "index-retained", AccountID: "account-retained", AccessToken: "token-retained", Label: "Retained"},
+	}}
+	client := &scriptedCodex{
+		usage:   func(int) (codex.Usage, error) { return codex.Usage{Allowed: true}, nil },
+		credits: func(int) (codex.CreditList, error) { t.Fatal("Credits() called"); return codex.CreditList{}, nil },
+		consume: func(int, string, string) (codex.ConsumeResult, error) {
+			t.Fatal("Consume() called")
+			return codex.ConsumeResult{}, nil
+		},
+	}
+	config := pluginconfig.Defaults()
+	config.Enabled = true
+	config.ManagementKey = "management-secret"
+	store := state.NewStore(filepath.Join(t.TempDir(), "state"))
+	engine := New(config, discovery, client, &fakeClearer{}, store)
+	engine.now = func() time.Time { return now }
+
+	first, errScan := engine.Scan(context.Background(), "manual")
+	if errScan != nil || first.Accounts != 2 {
+		t.Fatalf("first Scan() summary=%#v error=%v", first, errScan)
+	}
+	discovery.set([]account.Account{
+		{Ref: "retained", AuthID: "auth-retained", AuthIndex: "index-retained", AccountID: "account-retained", AccessToken: "token-retained", Label: "Retained Updated"},
+		{Ref: "added", AuthID: "auth-added", AuthIndex: "index-added", AccountID: "account-added", AccessToken: "token-added", Label: "Added"},
+	})
+	now = now.Add(5 * time.Minute)
+	second, errScan := engine.Scan(context.Background(), "manual")
+	if errScan != nil || second.Accounts != 2 {
+		t.Fatalf("second Scan() summary=%#v error=%v", second, errScan)
+	}
+
+	loaded, errLoad := store.Load()
+	if errLoad != nil {
+		t.Fatalf("Load() error = %v", errLoad)
+	}
+	if loaded.Accounts["removed"].IsPresent() {
+		t.Fatalf("removed account remained present: %#v", loaded.Accounts["removed"])
+	}
+	if !loaded.Accounts["retained"].IsPresent() || loaded.Accounts["retained"].Display.Label != "Retained Updated" {
+		t.Fatalf("retained account = %#v", loaded.Accounts["retained"])
+	}
+	if !loaded.Accounts["added"].IsPresent() {
+		t.Fatalf("added account = %#v", loaded.Accounts["added"])
 	}
 }
 

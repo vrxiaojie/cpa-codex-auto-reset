@@ -83,6 +83,41 @@ func TestAccountsOmitZeroNextAllowedAt(t *testing.T) {
 	}
 }
 
+func TestAccountsAndStatusHideAccountsMissingFromLatestDiscovery(t *testing.T) {
+	runtime := seededRuntime(t)
+	present := false
+	if errUpdate := runtime.store.Update(func(current *state.State) error {
+		current.Accounts["account-ref"].Present = &present
+		current.Accounts["active-ref"] = &state.AccountState{
+			Participating: true,
+			Present:       boolPointer(true),
+			Display:       state.AccountDisplay{Label: "Active", Email: "active@example.com"},
+			Tombstones:    make(map[string]time.Time),
+		}
+		return nil
+	}); errUpdate != nil {
+		t.Fatalf("update state: %v", errUpdate)
+	}
+
+	accountsResponse := New(runtime).route(managementRequest(http.MethodGet, "/v0/management"+apiPrefix+"/accounts", nil, nil))
+	var accounts AccountResponse
+	if errDecode := json.Unmarshal(accountsResponse.Body, &accounts); errDecode != nil {
+		t.Fatalf("decode accounts: %v", errDecode)
+	}
+	if len(accounts.Accounts) != 1 || accounts.Accounts[0].ID != "active-ref" {
+		t.Fatalf("accounts = %#v", accounts.Accounts)
+	}
+
+	statusResponse := New(runtime).route(managementRequest(http.MethodGet, "/v0/management"+apiPrefix+"/status", nil, nil))
+	var status StatusResponse
+	if errDecode := json.Unmarshal(statusResponse.Body, &status); errDecode != nil {
+		t.Fatalf("decode status: %v", errDecode)
+	}
+	if status.Counts.Total != 1 || status.Counts.Participating != 1 || status.Counts.NotParticipating != 0 {
+		t.Fatalf("status counts = %#v", status.Counts)
+	}
+}
+
 func TestParticipationUpdateIsAtomicAndRejectsUnknownIDs(t *testing.T) {
 	runtime := seededRuntime(t)
 	body := []byte(`{"auth_ids":["account-ref","missing"],"participating":true}`)
@@ -179,3 +214,5 @@ func seededRuntime(t *testing.T) *fakeRuntime {
 func managementRequest(method, path string, headers http.Header, body []byte) pluginapi.ManagementRequest {
 	return pluginapi.ManagementRequest{Method: method, Path: path, Headers: headers, Body: body}
 }
+
+func boolPointer(value bool) *bool { return &value }

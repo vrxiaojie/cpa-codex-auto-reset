@@ -19,6 +19,11 @@ func ReconcileAccounts(store *Store, accounts []account.Account, defaultParticip
 		return errors.New("state store is unavailable")
 	}
 	return store.Update(func(current *State) error {
+		for _, item := range current.Accounts {
+			if item != nil {
+				item.Present = presencePointer(false)
+			}
+		}
 		for _, discovered := range accounts {
 			item := current.Accounts[discovered.Ref]
 			if item == nil {
@@ -29,6 +34,7 @@ func ReconcileAccounts(store *Store, accounts []account.Account, defaultParticip
 				}
 				current.Accounts[discovered.Ref] = item
 			}
+			item.Present = presencePointer(true)
 			item.LastSeenAt = now.UTC()
 			item.Display = AccountDisplay{
 				Label:    discovered.Label,
@@ -55,7 +61,7 @@ func SetParticipation(store *Store, refs []string, participating bool, now time.
 	errUpdate := store.Update(func(current *State) error {
 		for ref := range unique {
 			item := current.Accounts[ref]
-			if item == nil {
+			if item == nil || !item.IsPresent() {
 				result.Unknown = append(result.Unknown, ref)
 				continue
 			}
@@ -68,3 +74,5 @@ func SetParticipation(store *Store, refs []string, participating bool, now time.
 	sort.Strings(result.Unknown)
 	return result, errUpdate
 }
+
+func presencePointer(value bool) *bool { return &value }
