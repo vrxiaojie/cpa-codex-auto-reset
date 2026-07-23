@@ -19,6 +19,7 @@ type AccountState struct {
 	Participating      bool                 `json:"participating"`
 	ParticipationSetAt time.Time            `json:"participation_set_at"`
 	LastSeenAt         time.Time            `json:"last_seen_at"`
+	Present            *bool                `json:"present,omitempty"`
 	Display            AccountDisplay       `json:"display"`
 	PendingAttempt     *Attempt             `json:"pending_attempt,omitempty"`
 	Tombstones         map[string]time.Time `json:"credit_tombstones,omitempty"`
@@ -33,6 +34,13 @@ type AccountState struct {
 	Blocked            bool                 `json:"blocked"`
 	LastScannedAt      time.Time            `json:"last_scanned_at,omitempty"`
 	LastErrorCode      string               `json:"last_error_code,omitempty"`
+}
+
+// IsPresent reports whether the account was returned by the latest successful
+// discovery. A missing value keeps schema-v1 state visible until the first scan
+// after upgrading has established authoritative presence information.
+func (a *AccountState) IsPresent() bool {
+	return a != nil && (a.Present == nil || *a.Present)
 }
 
 type AccountDisplay struct {

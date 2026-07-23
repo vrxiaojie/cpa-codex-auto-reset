@@ -162,7 +162,7 @@ func (h *Handler) status() pluginapi.ManagementResponse {
 		response.NextScan = current.LastScan.FinishedAt.Add(time.Duration(cfg.ScanIntervalSeconds) * time.Second)
 	}
 	for _, item := range current.Accounts {
-		if item == nil {
+		if !item.IsPresent() {
 			continue
 		}
 		response.Counts.Total++
@@ -191,7 +191,7 @@ func (h *Handler) accounts() pluginapi.ManagementResponse {
 	}
 	response := AccountResponse{Accounts: make([]AccountView, 0, len(current.Accounts))}
 	for ref, item := range current.Accounts {
-		if item == nil {
+		if !item.IsPresent() {
 			continue
 		}
 		response.Accounts = append(response.Accounts, AccountView{
